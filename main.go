@@ -113,6 +113,7 @@ func askQuestion(c *fiber.Ctx) error {
 
 	answer, err := askGemma(req.Query, contextText.String())
 	if err != nil {
+		fmt.Println("Ошибка Gemma:", err)
 		return c.Status(500).SendString("Ошибка Gemma")
 	}
 
@@ -210,24 +211,25 @@ func (s *PgStore) Search(q []float32, topK int) ([]Chunk, error) {
 
 func floatsToPgArray(v []float32) string {
 	var sb strings.Builder
-	sb.WriteString("{")
+	sb.WriteString("[")
 	for i, val := range v {
-		sb.WriteString(fmt.Sprintf("%f", val))
+		// Лучше использовать %.6f, чтобы не перегружать лишними знаками
+		sb.WriteString(fmt.Sprintf("%.6f", val))
 		if i < len(v)-1 {
 			sb.WriteString(",")
 		}
 	}
-	sb.WriteString("}")
+	sb.WriteString("]")
 	return sb.String()
 }
 
 // ---------------- GEMMA ----------------
 func askGemma(query, context string) (string, error) {
 	resp, err := oaicl.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
-		Model: "gemma-2b", // модель должна быть запущена в LM Studio
+		Model: "google/gemma-3n-e4b", // модель должна быть запущена в LM Studio
 		Messages: []openai.ChatCompletionMessage{
 			{Role: "system", Content: "Ты университетский помощник. Отвечай только на основе контекста."},
-			{Role: "user", Content: fmt.Sprintf("Контекст:\n%s\n\nВопрос: %s", context, query)},
+			{Role: "user", Content: fmt.Sprintf("Контекст:ТЕСТ\n\nВопрос: %s", context)},
 		},
 		Temperature: 0.2,
 	})
