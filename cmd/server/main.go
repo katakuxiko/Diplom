@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/gofiber/fiber/v2"
@@ -27,6 +28,7 @@ func main() {
 	// api
 	app := fiber.New()
 	api.RegisterRoutes(app, rag, llm, dbStore)
+	fmt.Print(cfg)
 
 	log.Printf("🚀 Server started at %s", cfg.ServerAddr)
 	log.Fatal(app.Listen(cfg.ServerAddr))
