@@ -4,7 +4,6 @@ import (
 	"os/exec"
 	"strings"
 )
-
 // TODO: USE https://github.com/sajari/docconv
 func ExtractText(path string) (string, error) {
 	cmd := exec.Command("pdftotext", "-enc", "UTF-8", path, "-")

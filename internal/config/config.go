@@ -11,7 +11,7 @@ type Config struct {
 	ChatModel  string
 	LMBaseURL  string
 }
-
+//TODO: get from .env file
 func Load() *Config {
 	return &Config{
 		PgConn:     getenv("PG_CONN", "host=localhost port=5432 user=postgres password=123123 dbname=pdf_ai sslmode=disable"),
