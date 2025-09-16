@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/katakuxiko/Diplom/internal/model"
 	"github.com/katakuxiko/Diplom/internal/store"
@@ -33,8 +34,9 @@ func (s *RAGService) Ask(query string, topK int) (string, []model.Chunk, error) 
 		b.WriteString(fmt.Sprintf("[%s]\n%s\n\n", ch.ID, ch.Text))
 	}
 	ctx := b.String()
-
+	startTime := time.Now()
 	answer, err := s.llm.Ask(query, ctx)
+	fmt.Println(time.Since(startTime)) // разница во времени
 	if err != nil {
 		return "", nil, fmt.Errorf("llm error: %w", err)
 	}
