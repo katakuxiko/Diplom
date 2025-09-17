@@ -29,7 +29,7 @@ func (r *AdminRepository) GetByID(id uuid.UUID) (*models.Admin, error) {
 	return &admin, nil
 }
 
-func (r *AdminRepository) Create(admin *models.AdminCreateRequest) error {
+func (r *AdminRepository) Create(admin *models.Admin) error {
 	return r.db.Create(admin).Error
 }
 

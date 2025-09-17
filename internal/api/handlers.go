@@ -10,7 +10,7 @@ import (
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/pdf"
 	"github.com/katakuxiko/Diplom/internal/service"
-	"github.com/katakuxiko/Diplom/internal/util"
+	"github.com/katakuxiko/Diplom/internal/utils"
 )
 
 // Handler хранит зависимости для обработчиков
@@ -53,7 +53,7 @@ func (h *Handler) IngestPDF(c *fiber.Ctx) error {
 		log.Printf("mkdir error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": "failed to prepare storage"})
 	}
-	saveName := util.Timestamped(file.Filename)
+	saveName := utils.Timestamped(file.Filename)
 	savePath := filepath.Join(saveDir, saveName)
 	if err := c.SaveFile(file, savePath); err != nil {
 		log.Printf("save file error: %v", err)

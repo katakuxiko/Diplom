@@ -26,7 +26,7 @@ func RegisterAdminRoutes(app *fiber.App, svc *service.AdminService) {
 // @Description	Возвращает список админов
 // @Tags			admins
 // @Produce		json
-// @Success		200	{array}		models.Admin
+// @Success		200	{array}		[]models.AdminResponse
 // @Failure		500	{object}	map[string]string
 // @Router			/admins [get]
 func GetAdmins(c *fiber.Ctx) error {
@@ -65,8 +65,8 @@ func GetAdminByID(c *fiber.Ctx) error {
 // @Tags			admins
 // @Accept			json
 // @Produce		json
-// @Param			admin	body		models.Admin	true	"Admin object"
-// @Success		201		{object}	models.Admin
+// @Param			admin	body		models.AdminCreateRequest	true	"Admin object"
+// @Success		201		{object}	models.AdminResponse
 // @Failure		400		{object}	map[string]string
 // @Failure		500		{object}	map[string]string
 // @Router			/admins [post]
@@ -75,7 +75,7 @@ func CreateAdmin(c *fiber.Ctx) error {
 	if err := c.BodyParser(&admin); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 	}
-	if err := adminService.Create(&admin); err != nil {
+	if _, err := adminService.Create(&admin); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.Status(201).JSON(admin)
@@ -88,8 +88,8 @@ func CreateAdmin(c *fiber.Ctx) error {
 // @Accept			json
 // @Produce		json
 // @Param			id		path		string			true	"Admin ID"
-// @Param			admin	body		models.Admin	true	"Admin object"
-// @Success		200		{object}	models.Admin
+// @Param			admin	body		models.AdminCreateRequest	true	"Admin object"
+// @Success		200		{object}	models.AdminResponse
 // @Failure		400		{object}	map[string]string
 // @Failure		500		{object}	map[string]string
 // @Router			/admins/{id} [put]
