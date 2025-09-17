@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sashabaranov/go-openai"
 	"github.com/katakuxiko/Diplom/internal/config"
+	"github.com/sashabaranov/go-openai"
 )
 
 // LLMClient — клиент для LM Studio / OpenAI совместимых моделей
@@ -47,7 +47,7 @@ func (l *LLMClient) Embedding(text string) ([]float32, error) {
 // Ask выполняет RAG/LLM запрос с контекстом
 func (l *LLMClient) Ask(query, contextText string) (string, error) {
 	prompt := fmt.Sprintf(
-		"Ты университетский помощник. Отвечай строго на основе контекста.\n\nКонтекст:\n%s\n\nВопрос: %s\n\nЕсли информации недостаточно, скажи об этом честно.",
+		"Ты университетский помощник. Отвечай строго на основе контекста.\n\nКонтекст:\n%s\n\nВопрос: %s\n\nЕсли информации недостаточно, скажи об этом честно. /no_think",
 		contextText, query,
 	)
 

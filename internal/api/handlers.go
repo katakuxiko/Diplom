@@ -7,23 +7,22 @@ import (
 	"path/filepath"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/katakuxiko/Diplom/internal/model"
+	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/pdf"
 	"github.com/katakuxiko/Diplom/internal/service"
-	"github.com/katakuxiko/Diplom/internal/store"
-	"github.com/katakuxiko/Diplom/internal/util"
+	"github.com/katakuxiko/Diplom/internal/utils"
 )
 
 // Handler хранит зависимости для обработчиков
 type Handler struct {
-	rag   *service.RAGService
-	llm   *service.LLMClient
-	store *store.PgStore
+	rag          *service.RAGService
+	llm          *service.LLMClient
+	chunkService *service.ChunkService
 }
 
 // NewHandler конструктор
-func NewHandler(rag *service.RAGService, llm *service.LLMClient, s *store.PgStore) *Handler {
-	return &Handler{rag: rag, llm: llm, store: s}
+func NewHandler(rag *service.RAGService, llm *service.LLMClient, chunkService *service.ChunkService) *Handler {
+	return &Handler{rag: rag, llm: llm, chunkService: chunkService}
 }
 
 // Health — простая проверка
@@ -54,7 +53,7 @@ func (h *Handler) IngestPDF(c *fiber.Ctx) error {
 		log.Printf("mkdir error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": "failed to prepare storage"})
 	}
-	saveName := util.Timestamped(file.Filename)
+	saveName := utils.Timestamped(file.Filename)
 	savePath := filepath.Join(saveDir, saveName)
 	if err := c.SaveFile(file, savePath); err != nil {
 		log.Printf("save file error: %v", err)
@@ -84,19 +83,17 @@ func (h *Handler) IngestPDF(c *fiber.Ctx) error {
 	docName := filepath.Base(savePath)
 	saved := 0
 	for i, p := range parts {
-		id := fmt.Sprintf("%s_chunk_%d", docName, i)
-		ch := model.Chunk{ID: id, Text: p}
+		chunk_name := fmt.Sprintf("%s_chunk_%d", docName, i)
+		ch := models.Chunk{Text: p, Filepath: savePath, DocName: chunk_name, ChunkName: chunk_name}
 
 		emb, err := h.llm.Embedding(p)
 		if err != nil {
-			log.Printf("embedding error (%s): %v", id, err)
+			log.Printf("embedding error (%s): %v", chunk_name, err)
 			continue
 		}
-		// опционально: проверка размерности (если у вас фиксированная dim)
-		// if len(emb) != expectedDim { ... }
 
-		if err := h.store.Add(docName, ch, emb); err != nil {
-			log.Printf("db insert error (%s): %v", id, err)
+		if err := h.chunkService.SaveChunk(ch, emb); err != nil {
+			log.Printf("db insert error (%s): %v", chunk_name, err)
 			continue
 		}
 		saved++
@@ -112,7 +109,7 @@ func (h *Handler) IngestPDF(c *fiber.Ctx) error {
 
 // AskQuestion — RAG: поиск + LLM
 func (h *Handler) AskQuestion(c *fiber.Ctx) error {
-	var req model.AskRequest
+	var req models.AskRequest
 	if err := c.BodyParser(&req); err != nil || len(req.Query) == 0 {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid request, expected JSON: {\"query\":\"...\"}"})
 	}
