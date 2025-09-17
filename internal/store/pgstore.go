@@ -2,20 +2,14 @@ package store
 
 import (
 	"fmt"
-	"strings"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
 	"github.com/katakuxiko/Diplom/internal/models"
-	"github.com/pgvector/pgvector-go"
 )
 
-type PgStore struct {
-	db *gorm.DB
-}
-
-func NewPgStore(conn string) (*PgStore, error) {
+func NewPgStore(conn string) (*gorm.DB, error) {
 	// Можно передавать conn напрямую, если он уже DSN
 	db, err := gorm.Open(postgres.Open(conn), &gorm.Config{})
 	if err != nil {
@@ -41,52 +35,7 @@ func NewPgStore(conn string) (*PgStore, error) {
 		return nil, err
 	}
 
-	return &PgStore{db: db}, nil
-}
-
-// Добавление чанка с вектором
-func (s *PgStore) Add(doc string, c models.Chunk, v pgvector.Vector) error {
-	// формируем строку для вектора
-
-	chunk := models.Chunk{
-		ID:        c.ID,
-		DocID:     c.DocID,
-		DocName:   doc,
-		Text:      c.Text,
-		Filepath:  c.Filepath,
-		Embedding: v, // хранится как string, а в БД это vector
-	}
-
-	return s.db.Create(&chunk).Error
-}
-
-// Поиск по вектору
-func (s *PgStore) Search(q []float32, k int) ([]models.Chunk, error) {
-	vec := floatsToPgVectorLiteral(q)
-
-	var res []models.Chunk
-	err := s.db.Raw(`
-		SELECT id, text
-		FROM chunks
-		ORDER BY embedding <-> ?::vector
-		LIMIT ?
-	`, vec, k).Scan(&res).Error
-	if err != nil {
-		return nil, err
-	}
-	return res, nil
-}
-func floatsToPgVectorLiteral(v []float32) string {
-	var sb strings.Builder
-	sb.WriteString("(")
-	for i, f := range v {
-		sb.WriteString(fmt.Sprintf("%.6f", f))
-		if i < len(v)-1 {
-			sb.WriteString(",")
-		}
-	}
-	sb.WriteString(")")
-	return sb.String()
+	return db, nil
 }
 
 // ensureSchema для pgvector и индексов

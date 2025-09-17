@@ -2,8 +2,9 @@ package models
 
 import (
 	"time"
-	"github.com/pgvector/pgvector-go"
+
 	"github.com/google/uuid"
+	"github.com/pgvector/pgvector-go"
 )
 
 // Админы
@@ -47,12 +48,12 @@ type Document struct {
 type Chunk struct {
 	ID        uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
 	DocID     uuid.UUID `gorm:"type:uuid;not null"`
-	Document  Document  `gorm:"foreignKey:DocID;references:ID"`
 	DocName   string
 	Text      string
-    Embedding pgvector.Vector `gorm:"type:vector(768)"`
+	Embedding pgvector.Vector `gorm:"type:vector(768)"`
 	Filepath  string
 	ChunkName string
+	Document  Document `gorm:"foreignKey:DocID;references:ID"`
 }
 
 // Настройки чата

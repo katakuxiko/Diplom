@@ -10,21 +10,19 @@ import (
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/pdf"
 	"github.com/katakuxiko/Diplom/internal/service"
-	"github.com/katakuxiko/Diplom/internal/store"
 	"github.com/katakuxiko/Diplom/internal/util"
-	"github.com/pgvector/pgvector-go"
 )
 
 // Handler хранит зависимости для обработчиков
 type Handler struct {
-	rag   *service.RAGService
-	llm   *service.LLMClient
-	store *store.PgStore
+	rag          *service.RAGService
+	llm          *service.LLMClient
+	chunkService *service.ChunkService
 }
 
 // NewHandler конструктор
-func NewHandler(rag *service.RAGService, llm *service.LLMClient, s *store.PgStore) *Handler {
-	return &Handler{rag: rag, llm: llm, store: s}
+func NewHandler(rag *service.RAGService, llm *service.LLMClient, chunkService *service.ChunkService) *Handler {
+	return &Handler{rag: rag, llm: llm, chunkService: chunkService}
 }
 
 // Health — простая проверка
@@ -94,9 +92,7 @@ func (h *Handler) IngestPDF(c *fiber.Ctx) error {
 			continue
 		}
 
-		vec := pgvector.NewVector(emb) // ✨ конвертация
-
-		if err := h.store.Add(docName, ch, vec); err != nil {
+		if err := h.chunkService.SaveChunk(ch, emb); err != nil {
 			log.Printf("db insert error (%s): %v", chunk_name, err)
 			continue
 		}

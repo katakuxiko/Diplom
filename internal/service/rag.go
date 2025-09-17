@@ -6,25 +6,27 @@ import (
 	"time"
 
 	"github.com/katakuxiko/Diplom/internal/models"
-	"github.com/katakuxiko/Diplom/internal/store"
+	"github.com/katakuxiko/Diplom/internal/repository"
+	"github.com/pgvector/pgvector-go"
 )
 
 type RAGService struct {
-	store *store.PgStore
-	llm   *LLMClient
+	ChunkRepository *repository.ChunkRepository
+	llm             *LLMClient
 }
 
-func NewRAGService(store *store.PgStore, llm *LLMClient) *RAGService {
-	return &RAGService{store: store, llm: llm}
+func NewRAGService(ChunkRepository *repository.ChunkRepository, llm *LLMClient) *RAGService {
+	return &RAGService{ChunkRepository: ChunkRepository, llm: llm}
 }
 
 func (s *RAGService) Ask(query string, topK int) (string, []models.Chunk, error) {
-	vec, err := s.llm.Embedding(query)
+	v, err := s.llm.Embedding(query)
 	if err != nil {
 		return "", nil, fmt.Errorf("embedding error: %w", err)
 	}
+	vec := pgvector.NewVector(v)
 
-	chunks, err := s.store.Search(vec, topK)
+	chunks, err := s.ChunkRepository.SearchByVector(vec, topK)
 	if err != nil {
 		return "", nil, fmt.Errorf("search error: %w", err)
 	}
