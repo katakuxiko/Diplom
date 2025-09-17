@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/katakuxiko/Diplom/internal/models"
+	"github.com/pgvector/pgvector-go"
 )
 
 type PgStore struct {
@@ -44,12 +45,19 @@ func NewPgStore(conn string) (*PgStore, error) {
 }
 
 // Добавление чанка с вектором
-func (s *PgStore) Add(doc string, c models.Chunk, v []float32) error {
-	vec := floatsToPgVectorLiteral(v)
-	return s.db.Exec(`
-		INSERT INTO chunks (doc_name, id, text, embedding)
-		VALUES (?, ?, ?, ?::vector)
-	`, doc, c.ID, c.Text, vec).Error
+func (s *PgStore) Add(doc string, c models.Chunk, v pgvector.Vector) error {
+	// формируем строку для вектора
+
+	chunk := models.Chunk{
+		ID:        c.ID,
+		DocID:     c.DocID,
+		DocName:   doc,
+		Text:      c.Text,
+		Filepath:  c.Filepath,
+		Embedding: v, // хранится как string, а в БД это vector
+	}
+
+	return s.db.Create(&chunk).Error
 }
 
 // Поиск по вектору
@@ -68,17 +76,16 @@ func (s *PgStore) Search(q []float32, k int) ([]models.Chunk, error) {
 	}
 	return res, nil
 }
-
 func floatsToPgVectorLiteral(v []float32) string {
 	var sb strings.Builder
-	sb.WriteString("[")
+	sb.WriteString("(")
 	for i, f := range v {
 		sb.WriteString(fmt.Sprintf("%.6f", f))
 		if i < len(v)-1 {
 			sb.WriteString(",")
 		}
 	}
-	sb.WriteString("]")
+	sb.WriteString(")")
 	return sb.String()
 }
 

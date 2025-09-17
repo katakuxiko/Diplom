@@ -435,7 +435,6 @@ func max(a, b int) int {
 	return b
 }
 
-//
 // (опционально) если когда-нибудь понадобится downcast/round:
 //
 //nolint:unused

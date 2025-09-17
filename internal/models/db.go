@@ -2,7 +2,7 @@ package models
 
 import (
 	"time"
-
+	"github.com/pgvector/pgvector-go"
 	"github.com/google/uuid"
 )
 
@@ -50,8 +50,8 @@ type Chunk struct {
 	Document  Document  `gorm:"foreignKey:DocID;references:ID"`
 	DocName   string
 	Text      string
-	Embedding []float32 `gorm:"type:vector(768)"` // pgvector
-	FilePath  string
+    Embedding pgvector.Vector `gorm:"type:vector(768)"`
+	Filepath  string
 	ChunkName string
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/katakuxiko/Diplom/internal/service"
 	"github.com/katakuxiko/Diplom/internal/store"
 	"github.com/katakuxiko/Diplom/internal/util"
+	"github.com/pgvector/pgvector-go"
 )
 
 // Handler хранит зависимости для обработчиков
@@ -84,18 +85,18 @@ func (h *Handler) IngestPDF(c *fiber.Ctx) error {
 	docName := filepath.Base(savePath)
 	saved := 0
 	for i, p := range parts {
-		chunk_name := fmt.Sprintf("%s_chunk_%s", docName, i)
-		ch := models.Chunk{Text: p, FilePath: savePath, DocName: chunk_name}
+		chunk_name := fmt.Sprintf("%s_chunk_%d", docName, i)
+		ch := models.Chunk{Text: p, Filepath: savePath, DocName: chunk_name, ChunkName: chunk_name}
 
 		emb, err := h.llm.Embedding(p)
 		if err != nil {
 			log.Printf("embedding error (%s): %v", chunk_name, err)
 			continue
 		}
-		// опционально: проверка размерности (если у вас фиксированная dim)
-		// if len(emb) != expectedDim { ... }
 
-		if err := h.store.Add(docName, ch, emb); err != nil {
+		vec := pgvector.NewVector(emb) // ✨ конвертация
+
+		if err := h.store.Add(docName, ch, vec); err != nil {
 			log.Printf("db insert error (%s): %v", chunk_name, err)
 			continue
 		}

@@ -12,7 +12,7 @@ type Config struct {
 	LMBaseURL  string
 }
 
-//TODO: get from .env file
+// TODO: get from .env file
 func Load() *Config {
 	return &Config{
 		PgConn:     getenv("PG_CONN", "host=localhost port=5432 user=postgres password=123123 dbname=pdf_ai sslmode=disable"),
