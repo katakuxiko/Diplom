@@ -1,8 +1,3 @@
-// @title			Diplom API
-// @version		1.0
-// @description	REST API для дипломного проекта
-// @host			localhost:8080
-// @BasePath		/
 package main
 
 import (
@@ -22,7 +17,7 @@ import (
 
 // @title			Diplom API
 // @version		1.0
-// @description	API для дипломного проекта
+// @description	API для дипломного проекта asd
 // @host			localhost:8080
 // @BasePath		/
 func main() {
@@ -47,7 +42,8 @@ func main() {
 	// api
 	app := fiber.New()
 	api.RegisterRoutes(app, rag, llm, chunkService, adminService)
-
+	//	@Summary		Получить всех админов
+	//	@Description	Возвращает список админов
 	app.Get("/swagger/*", swagger.WrapHandler)
 	fmt.Print(cfg)
 

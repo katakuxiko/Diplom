@@ -22,7 +22,7 @@ func (s *AdminService) GetByID(id uuid.UUID) (*models.Admin, error) {
 	return s.repo.GetByID(id)
 }
 
-func (s *AdminService) Create(admin *models.Admin) error {
+func (s *AdminService) Create(admin *models.AdminCreateRequest) error {
 	return s.repo.Create(admin)
 }
 

@@ -50,7 +50,7 @@ type Chunk struct {
 	DocID     uuid.UUID `gorm:"type:uuid;not null"`
 	DocName   string
 	Text      string
-	Embedding pgvector.Vector `gorm:"type:vector(768)"`
+	Embedding pgvector.Vector `gorm:"type:vector(768)" swaggerignore:"true"`
 	Filepath  string
 	ChunkName string
 	Document  Document `gorm:"foreignKey:DocID;references:ID"`
