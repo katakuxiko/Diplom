@@ -16,6 +16,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	_ "github.com/lib/pq"
 	"github.com/sashabaranov/go-openai"
+	"github.com/joho/godotenv"
 )
 
 // ---------------- CONFIG ----------------
@@ -61,7 +62,10 @@ var (
 
 func main() {
 	// ENV
-	pgConn := getenv("PG_CONN", "host=localhost port=5432 user=postgres password=123123 dbname=pdf_ai sslmode=disable")
+	if err := godotenv.Load(); err != nil {
+        log.Println("  .env файл не найден, используем системные переменные")
+	}
+	pgConn := getenv("PG_CONN", "host=localhost port=5432 user=postgres password=111 dbname=DiplomaDB sslmode=disable")
 	baseURL := getenv("LMSTUDIO_BASE_URL", "http://localhost:1234/v1")
 	embedName = getenv("EMBED_MODEL", embedModelDefault)
 	chatName = getenv("LLM_MODEL", chatModelDefault)

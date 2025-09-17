@@ -14,7 +14,7 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
-		PgConn:     getenv("PG_CONN", "host=localhost port=5432 user=postgres password=123123 dbname=pdf_ai sslmode=disable"),
+		PgConn:     getenv("PG_CONN", "host=localhost port=5432 user=postgres password=111 dbname=DiplomaDB sslmode=disable"),
 		ServerAddr: getenv("SERVER_ADDR", ":8080"),
 		EmbedModel: getenv("EMBED_MODEL", "text-embedding-nomic-embed-text-v1.5"),
 		ChatModel:  getenv("LLM_MODEL", "google/gemma-3n-e4b"),
