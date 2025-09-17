@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/katakuxiko/Diplom/internal/model"
+	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/pdf"
 	"github.com/katakuxiko/Diplom/internal/service"
 	"github.com/katakuxiko/Diplom/internal/store"
@@ -84,19 +84,19 @@ func (h *Handler) IngestPDF(c *fiber.Ctx) error {
 	docName := filepath.Base(savePath)
 	saved := 0
 	for i, p := range parts {
-		id := fmt.Sprintf("%s_chunk_%d", docName, i)
-		ch := model.Chunk{ID: id, Text: p}
+		chunk_name := fmt.Sprintf("%s_chunk_%s", docName, i)
+		ch := models.Chunk{Text: p, FilePath: savePath, DocName: chunk_name}
 
 		emb, err := h.llm.Embedding(p)
 		if err != nil {
-			log.Printf("embedding error (%s): %v", id, err)
+			log.Printf("embedding error (%s): %v", chunk_name, err)
 			continue
 		}
 		// опционально: проверка размерности (если у вас фиксированная dim)
 		// if len(emb) != expectedDim { ... }
 
 		if err := h.store.Add(docName, ch, emb); err != nil {
-			log.Printf("db insert error (%s): %v", id, err)
+			log.Printf("db insert error (%s): %v", chunk_name, err)
 			continue
 		}
 		saved++
@@ -112,7 +112,7 @@ func (h *Handler) IngestPDF(c *fiber.Ctx) error {
 
 // AskQuestion — RAG: поиск + LLM
 func (h *Handler) AskQuestion(c *fiber.Ctx) error {
-	var req model.AskRequest
+	var req models.AskRequest
 	if err := c.BodyParser(&req); err != nil || len(req.Query) == 0 {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid request, expected JSON: {\"query\":\"...\"}"})
 	}

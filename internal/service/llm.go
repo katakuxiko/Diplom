@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sashabaranov/go-openai"
 	"github.com/katakuxiko/Diplom/internal/config"
+	"github.com/sashabaranov/go-openai"
 )
 
 // LLMClient — клиент для LM Studio / OpenAI совместимых моделей

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/katakuxiko/Diplom/internal/model"
+	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/store"
 )
 
@@ -18,7 +18,7 @@ func NewRAGService(store *store.PgStore, llm *LLMClient) *RAGService {
 	return &RAGService{store: store, llm: llm}
 }
 
-func (s *RAGService) Ask(query string, topK int) (string, []model.Chunk, error) {
+func (s *RAGService) Ask(query string, topK int) (string, []models.Chunk, error) {
 	vec, err := s.llm.Embedding(query)
 	if err != nil {
 		return "", nil, fmt.Errorf("embedding error: %w", err)

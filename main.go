@@ -22,9 +22,9 @@ import (
 
 const (
 	embedModelDefault  = "text-embedding-nomic-embed-text-v1.5" // LM Studio embeddings
-	chatModelDefault   = "google/gemma-3n-e4b:2"                 // LM Studio chat model
-	embedDim           = 768                                     // размерность вектора embeddings
-	chunkSizeTokens    = 220                                     // грубая оценка "токенов" (по словам)
+	chatModelDefault   = "google/gemma-3n-e4b:2"                // LM Studio chat model
+	embedDim           = 768                                    // размерность вектора embeddings
+	chunkSizeTokens    = 220                                    // грубая оценка "токенов" (по словам)
 	chunkOverlapTokens = 40
 	topK               = 5
 	maxContextChars    = 12000 // приблизительно ~3000 токенов
@@ -154,15 +154,15 @@ func ingestPDF(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"status":        "ok",
-		"doc":           docName,
-		"chunks_total":  len(chunks),
-		"chunks_saved":  okCnt,
-		"embed_model":   embedName,
-		"vector_dim":    embedDim,
-		"storage":       "pgvector",
-		"table":         "chunks",
-		"index":         "ivfflat cosine",
+		"status":       "ok",
+		"doc":          docName,
+		"chunks_total": len(chunks),
+		"chunks_saved": okCnt,
+		"embed_model":  embedName,
+		"vector_dim":   embedDim,
+		"storage":      "pgvector",
+		"table":        "chunks",
+		"index":        "ivfflat cosine",
 	})
 }
 
@@ -235,13 +235,14 @@ func askQuestion(c *fiber.Ctx) error {
 
 // Извлечение текста из PDF (rsc.io/pdf)
 func extractText(path string) (string, error) {
-    cmd := exec.Command("pdftotext", "-enc", "UTF-8", path, "-")
-    out, err := cmd.Output()
-    if err != nil {
-        return "", err
-    }
-    return string(out), nil
+	cmd := exec.Command("pdftotext", "-enc", "UTF-8", path, "-")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }
+
 // Простая очистка текста
 func sanitize(s string) string {
 	s = strings.ReplaceAll(s, "\r", "\n")
