@@ -33,15 +33,16 @@ func main() {
 	// repo
 	chunkRepo := repository.NewChunkRepository(db)
 	adminRepo := repository.NewAdminRepository(db)
+	chatRepo := repository.NewChatRepository(db)
 	// services
 	llm := service.NewLLMClient(cfg)
 	rag := service.NewRAGService(chunkRepo, llm)
 	chunkService := service.NewChunkService(chunkRepo)
 	adminService := service.NewAdminService(adminRepo)
-
+	chatService := service.NewChatService(chatRepo)
 	// api
 	app := fiber.New()
-	api.RegisterRoutes(app, rag, llm, chunkService, adminService)
+	api.RegisterRoutes(app, rag, llm, chunkService, adminService, chatService)
 	//	@Summary		Получить всех админов
 	//	@Description	Возвращает список админов
 	app.Get("/swagger/*", swagger.WrapHandler)

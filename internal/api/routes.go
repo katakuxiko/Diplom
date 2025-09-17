@@ -2,14 +2,17 @@ package api
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"github.com/katakuxiko/Diplom/internal/handlers"
+	"github.com/katakuxiko/Diplom/internal/routes"
 	"github.com/katakuxiko/Diplom/internal/service"
 )
 
-func RegisterRoutes(app *fiber.App, rag *service.RAGService, llm *service.LLMClient, chunkService *service.ChunkService, adminService *service.AdminService) {
+func RegisterRoutes(app *fiber.App, rag *service.RAGService, llm *service.LLMClient, chunkService *service.ChunkService, adminService *service.AdminService, chatService *service.ChatService) {
 
 	h := NewHandler(rag, llm, chunkService)
 
-	RegisterAdminRoutes(app, adminService)
+	handlers.RegisterAdminRoutes(app, adminService)
+	routes.RegisterChatRoutes(app, chatService)
 
 	app.Get("/health", h.Health)
 	app.Get("/models", h.ListModels)
