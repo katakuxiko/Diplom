@@ -1,7 +1,10 @@
 package config
 
 import (
+	"log"
 	"os"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -14,6 +17,11 @@ type Config struct {
 
 // TODO: get from .env file
 func Load() *Config {
+
+	if err := godotenv.Load(); err != nil {
+		log.Println("  .env файл не найден, используем системные переменные")
+	}
+
 	return &Config{
 		PgConn:     getenv("PG_CONN", "host=localhost port=5432 user=postgres password=123123 dbname=pdf_ai sslmode=disable"),
 		ServerAddr: getenv("SERVER_ADDR", ":8080"),
