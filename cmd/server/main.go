@@ -43,8 +43,7 @@ func main() {
 	// api
 	app := fiber.New()
 	api.RegisterRoutes(app, rag, llm, chunkService, adminService, chatService)
-	//	@Summary		Получить всех админов
-	//	@Description	Возвращает список админов
+
 	app.Get("/swagger/*", swagger.WrapHandler)
 	fmt.Print(cfg)
 
