@@ -107,7 +107,17 @@ func (h *Handler) IngestPDF(c *fiber.Ctx) error {
 	})
 }
 
-// AskQuestion — RAG: поиск + LLM
+// AskQuestion godoc
+// @Summary Ask a question to the RAG system (LLM + search)
+// @Description Получение ответа на вопрос с использованием Retrieval-Augmented Generation (RAG)
+// @Tags RAG
+// @Accept json
+// @Produce json
+// @Param request body models.AskRequest true "Request payload, e.g., {\"query\":\"...\", \"top_k\":5, \"model\":\"gpt-4\"}"
+// @Success 200 {object} map[string]interface{} "Answer and context chunks"
+// @Failure 400 {object} map[string]string "Invalid request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /ask [post]
 func (h *Handler) AskQuestion(c *fiber.Ctx) error {
 	var req models.AskRequest
 	if err := c.BodyParser(&req); err != nil || len(req.Query) == 0 {

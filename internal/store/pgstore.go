@@ -15,7 +15,9 @@ func NewPgStore(conn string) (*gorm.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect database: %w", err)
 	}
-
+	if err := ensureExtension(db); err != nil {
+		return nil, err
+	}
 	// Автомиграция всех моделей
 	if err := db.AutoMigrate(
 		&models.Admin{},
@@ -41,8 +43,7 @@ func NewPgStore(conn string) (*gorm.DB, error) {
 // ensureSchema для pgvector и индексов
 func ensureSchema(db *gorm.DB) error {
 	stmts := []string{
-		`CREATE EXTENSION IF NOT EXISTS vector`,
-		`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`,
+
 		`DO $$
 		BEGIN
 			IF NOT EXISTS (
@@ -53,6 +54,23 @@ func ensureSchema(db *gorm.DB) error {
 				EXECUTE 'CREATE INDEX chunks_embedding_ivfflat_idx ON chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists=100)';
 			END IF;
 		END $$;`,
+	}
+
+	for _, s := range stmts {
+		if err := db.Exec(s).Error; err != nil {
+			return err
+		}
+	}
+
+	// ANALYZE
+	_ = db.Exec(`ANALYZE chunks`).Error
+	return nil
+}
+
+func ensureExtension(db *gorm.DB) error {
+	stmts := []string{
+		`CREATE EXTENSION IF NOT EXISTS vector`,
+		`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`,
 	}
 
 	for _, s := range stmts {

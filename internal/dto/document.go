@@ -19,3 +19,10 @@ type DocumentResponseDTO struct {
 	AccessLevel int       `json:"access_level"`
 	CreatedDate time.Time `json:"created_date"`
 }
+
+type DocumentIngestResponse struct {
+	Status      string      `json:"status"`
+	Document    interface{} `json:"doc"` // можно заменить на конкретный DTO DocumentResponseDTO
+	ChunksTotal int         `json:"chunks_total"`
+	ChunksSaved int         `json:"chunks_saved"`
+}

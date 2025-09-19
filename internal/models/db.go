@@ -41,7 +41,7 @@ type Document struct {
 	AccessLevel int       `gorm:"default:0" json:"access_level"`
 	CreatedDate time.Time `gorm:"default:now()" json:"created_date"`
 	Chat        Chat      `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:ChatID" json:"-"`
-	Chunks      []Chunk   `gorm:"foreignKey:DocID" swaggerignore:"true" json:"-"`
+	Chunks      []Chunk   `gorm:"foreignKey:DocID;constraint:OnDelete:CASCADE;" swaggerignore:"true" json:"-"`
 }
 
 // Чанки
@@ -50,17 +50,18 @@ type Chunk struct {
 	DocID     uuid.UUID `gorm:"type:uuid;not null"`
 	DocName   string
 	Text      string
-	Embedding pgvector.Vector `gorm:"type:vector(768)" swaggerignore:"true"`
+	Embedding pgvector.Vector `gorm:"type:vector(768)" swaggerignore:"true" json:"-"`
 	Filepath  string
 	ChunkName string
-	Document  Document `gorm:"foreignKey:DocID;references:ID" swaggerignore:"true"`
+	Document  Document `gorm:"foreignKey:DocID;references:ID" swaggerignore:"true" json:"-"`
 }
 
 // Настройки чата
 type ChatSetting struct {
-	ID          uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
-	ChatID      uuid.UUID `gorm:"type:uuid;not null"`
-	Chat        Chat
+	ID     uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
+	ChatID uuid.UUID `gorm:"type:uuid;not null"`
+	Chat   Chat
+
 	HelloText   string
 	Name        string
 	Descr       string
