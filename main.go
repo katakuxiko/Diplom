@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/gofiber/fiber/v2"
@@ -54,7 +53,6 @@ func main() {
 	api.RegisterRoutes(app, cfg, rag, llm, chunkService, adminService, chatService, documentService)
 
 	app.Get("/swagger/*", swagger.WrapHandler)
-	fmt.Print(cfg)
 
 	log.Printf("🚀 Server started at %s", cfg.ServerAddr)
 	log.Fatal(app.Listen(cfg.ServerAddr))

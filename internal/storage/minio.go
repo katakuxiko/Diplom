@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"log"
 	"mime/multipart"
 
 	"github.com/minio/minio-go/v7"
@@ -72,5 +73,14 @@ func (s *MinioStorage) DownloadFile(objectName string) (string, error) {
 
 // DeleteFile удаляет файл из MinIO
 func (s *MinioStorage) DeleteFile(objectName string) error {
-	return s.client.RemoveObject(context.Background(), s.bucket, objectName, minio.RemoveObjectOptions{})
+	_, err := s.client.StatObject(context.Background(), s.bucket, objectName, minio.StatObjectOptions{})
+	if err != nil {
+		log.Printf("object does not exist: %v", err)
+	}
+
+	err = s.client.RemoveObject(context.Background(), s.bucket, objectName, minio.RemoveObjectOptions{})
+	if err != nil {
+		log.Printf("failed to delete object: %v", err)
+	}
+	return err
 }

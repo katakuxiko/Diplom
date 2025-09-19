@@ -24,7 +24,7 @@ func NewDocumentService(repo *repository.DocumentRepository, storage *storage.Mi
 func (s *DocumentService) CreateDocument(chatID uuid.UUID, file multipart.File, fileHeader *multipart.FileHeader, cfg *config.Config) (*models.Document, error) {
 	docID := uuid.New()
 	objectName := fmt.Sprintf("%s/%s", chatID.String(), fileHeader.Filename)
-	path := fmt.Sprintf("%s/%s/%s", cfg.MinioEndpoint, cfg.MinioBucket, objectName)
+	fullPath := fmt.Sprintf("%s/%s/%s", cfg.MinioEndpoint, cfg.MinioBucket, objectName)
 	print(objectName)
 	// загрузка в MinIO через storage
 	if _, err := s.storage.UploadFile(objectName, file, fileHeader); err != nil {
@@ -35,7 +35,8 @@ func (s *DocumentService) CreateDocument(chatID uuid.UUID, file multipart.File, 
 		ID:          docID,
 		ChatID:      chatID,
 		Name:        fileHeader.Filename,
-		Path:        path,
+		Path:        objectName,
+		FullPath:    fullPath,
 		CreatedDate: time.Now(),
 	}
 	if err := s.repo.Create(doc); err != nil {
@@ -71,7 +72,11 @@ func (s *DocumentService) DeleteDocument(id uuid.UUID) error {
 
 	// Удаляем файл из MinIO
 	if doc.Path != "" {
-		_ = s.storage.DeleteFile(doc.Name)
+		err = s.storage.DeleteFile(doc.Path)
+		if err != nil {
+			fmt.Println(err)
+			return err
+		}
 	}
 
 	return s.repo.Delete(id)

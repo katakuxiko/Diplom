@@ -37,6 +37,7 @@ type Document struct {
 	ChatID      uuid.UUID `gorm:"type:uuid;not null" json:"chat_id"`
 	Name        string    `gorm:"not null" json:"name"`
 	Path        string    `json:"path"`
+	FullPath    string    `json:"full_path"`
 	Protected   bool      `gorm:"default:false" json:"protected"`
 	AccessLevel int       `gorm:"default:0" json:"access_level"`
 	CreatedDate time.Time `gorm:"default:now()" json:"created_date"`
@@ -58,10 +59,9 @@ type Chunk struct {
 
 // Настройки чата
 type ChatSetting struct {
-	ID     uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
-	ChatID uuid.UUID `gorm:"type:uuid;not null"`
-	Chat   Chat
-
+	ID          uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
+	ChatID      uuid.UUID `gorm:"type:uuid;not null"`
+	Chat        Chat
 	HelloText   string
 	Name        string
 	Descr       string
