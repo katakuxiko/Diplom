@@ -19,5 +19,12 @@ air
 swagger initialization:
 
 ```
-swag init -g cmd/server/main.go -d ./ -o ./docs
+swag init -g main.go -d ./ -o ./docs
+```
+
+minio download https://www.min.io/download?platform=windows
+
+minio start
+```
+ .\minio.exe server C:\minio\data --console-address ":9090"
 ```
