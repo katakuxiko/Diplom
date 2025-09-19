@@ -10,6 +10,7 @@ import (
 	"github.com/katakuxiko/Diplom/internal/config"
 	"github.com/katakuxiko/Diplom/internal/repository"
 	"github.com/katakuxiko/Diplom/internal/service"
+	"github.com/katakuxiko/Diplom/internal/storage"
 	"github.com/katakuxiko/Diplom/internal/store"
 
 	swagger "github.com/swaggo/fiber-swagger"
@@ -30,19 +31,27 @@ func main() {
 		log.Fatal(err)
 	}
 
+	//storage
+	minioClient, err := storage.NewMinioStorage(cfg.MinioEndpoint, cfg.MinioAccess, cfg.MinioSecret, cfg.MinioBucket, cfg.MinioUseSSL)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// repo
 	chunkRepo := repository.NewChunkRepository(db)
 	adminRepo := repository.NewAdminRepository(db)
 	chatRepo := repository.NewChatRepository(db)
+	documentRepo := repository.NewDocumentRepository(db)
 	// services
 	llm := service.NewLLMClient(cfg)
 	rag := service.NewRAGService(chunkRepo, llm)
 	chunkService := service.NewChunkService(chunkRepo)
 	adminService := service.NewAdminService(adminRepo)
 	chatService := service.NewChatService(chatRepo)
+	documentService := service.NewDocumentService(documentRepo, minioClient)
 	// api
 	app := fiber.New()
-	api.RegisterRoutes(app, rag, llm, chunkService, adminService, chatService)
+	api.RegisterRoutes(app, rag, llm, chunkService, adminService, chatService, documentService)
 
 	app.Get("/swagger/*", swagger.WrapHandler)
 	fmt.Print(cfg)

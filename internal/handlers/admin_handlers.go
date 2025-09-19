@@ -3,6 +3,7 @@ package handlers
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/katakuxiko/Diplom/internal/dto"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/service"
 )
@@ -26,7 +27,7 @@ func RegisterAdminRoutes(app *fiber.App, svc *service.AdminService) {
 // @Description	Возвращает список админов
 // @Tags			admins
 // @Produce		json
-// @Success		200	{array}		[]models.AdminResponse
+// @Success		200	{array}		[]dto.AdminResponse
 // @Failure		500	{object}	map[string]string
 // @Router			/admins [get]
 func GetAdmins(c *fiber.Ctx) error {
@@ -43,7 +44,7 @@ func GetAdmins(c *fiber.Ctx) error {
 // @Tags			admins
 // @Param			id	path	string	true	"Admin ID"
 // @Produce		json
-// @Success		200	{object}	models.Admin
+// @Success		200	{object}	dto.AdminResponse
 // @Failure		400	{object}	map[string]string
 // @Failure		404	{object}	map[string]string
 // @Router			/admins/{id} [get]
@@ -65,13 +66,13 @@ func GetAdminByID(c *fiber.Ctx) error {
 // @Tags			admins
 // @Accept			json
 // @Produce		json
-// @Param			admin	body		models.AdminCreateRequest	true	"Admin object"
-// @Success		201		{object}	models.AdminResponse
+// @Param			admin	body		dto.AdminCreateRequest	true	"Admin object"
+// @Success		201		{object}	dto.AdminResponse
 // @Failure		400		{object}	map[string]string
 // @Failure		500		{object}	map[string]string
 // @Router			/admins [post]
 func CreateAdmin(c *fiber.Ctx) error {
-	var admin models.AdminCreateRequest
+	var admin dto.AdminCreateRequest
 	if err := c.BodyParser(&admin); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 	}
@@ -88,8 +89,8 @@ func CreateAdmin(c *fiber.Ctx) error {
 // @Accept			json
 // @Produce		json
 // @Param			id		path		string			true	"Admin ID"
-// @Param			admin	body		models.AdminCreateRequest	true	"Admin object"
-// @Success		200		{object}	models.AdminResponse
+// @Param			admin	body		dto.AdminCreateRequest	true	"Admin object"
+// @Success		200		{object}	dto.AdminResponse
 // @Failure		400		{object}	map[string]string
 // @Failure		500		{object}	map[string]string
 // @Router			/admins/{id} [put]

@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/katakuxiko/Diplom/internal/models"
+	"github.com/katakuxiko/Diplom/internal/dto"
 	"github.com/katakuxiko/Diplom/internal/service"
 )
 
@@ -11,12 +11,12 @@ import (
 // @Tags         chats
 // @Accept       json
 // @Produce      json
-// @Param        chat body models.ChatCreateRequest true "Chat object"
-// @Success      201 {object} models.ChatResponse
+// @Param        chat body dto.ChatCreateRequest true "Chat object"
+// @Success      201 {object} dto.ChatResponse
 // @Router       /chats [post]
 func CreateChat(chatService *service.ChatService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		var req models.ChatCreateRequest
+		var req dto.ChatCreateRequest
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
@@ -24,7 +24,7 @@ func CreateChat(chatService *service.ChatService) fiber.Handler {
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 		}
-		return c.Status(201).JSON(models.ChatResponse{
+		return c.Status(201).JSON(dto.ChatResponse{
 			ID:          chat.ID,
 			AdminID:     chat.AdminID,
 			Name:        chat.Name,
@@ -39,7 +39,7 @@ func CreateChat(chatService *service.ChatService) fiber.Handler {
 // @Tags         chats
 // @Produce      json
 // @Param        id path string true "Chat ID"
-// @Success      200 {object} models.ChatResponse
+// @Success      200 {object} dto.ChatResponse
 // @Router       /chats/{id} [get]
 func GetChat(chatService *service.ChatService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
@@ -48,7 +48,7 @@ func GetChat(chatService *service.ChatService) fiber.Handler {
 		if err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "chat not found"})
 		}
-		return c.JSON(models.ChatResponse{
+		return c.JSON(dto.ChatResponse{
 			ID:          chat.ID,
 			AdminID:     chat.AdminID,
 			Name:        chat.Name,
@@ -62,7 +62,7 @@ func GetChat(chatService *service.ChatService) fiber.Handler {
 // @Summary      Получить список чатов
 // @Tags         chats
 // @Produce      json
-// @Success      200 {array} models.ChatResponse
+// @Success      200 {array} dto.ChatResponse
 // @Router       /chats [get]
 func ListChats(chatService *service.ChatService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
@@ -71,9 +71,9 @@ func ListChats(chatService *service.ChatService) fiber.Handler {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 		}
 
-		res := make([]models.ChatResponse, 0, len(chats))
+		res := make([]dto.ChatResponse, 0, len(chats))
 		for _, chat := range chats {
-			res = append(res, models.ChatResponse{
+			res = append(res, dto.ChatResponse{
 				ID:          chat.ID,
 				AdminID:     chat.AdminID,
 				Name:        chat.Name,

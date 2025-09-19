@@ -7,11 +7,12 @@ import (
 	"github.com/katakuxiko/Diplom/internal/service"
 )
 
-func RegisterRoutes(app *fiber.App, rag *service.RAGService, llm *service.LLMClient, chunkService *service.ChunkService, adminService *service.AdminService, chatService *service.ChatService) {
+func RegisterRoutes(app *fiber.App, rag *service.RAGService, llm *service.LLMClient, chunkService *service.ChunkService, adminService *service.AdminService, chatService *service.ChatService, documentService *service.DocumentService) {
 
 	h := NewHandler(rag, llm, chunkService)
 
 	handlers.RegisterAdminRoutes(app, adminService)
+	handlers.RegisterDocumentRoutes(app, documentService)
 	routes.RegisterChatRoutes(app, chatService)
 
 	app.Get("/health", h.Health)

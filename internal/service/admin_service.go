@@ -2,6 +2,7 @@ package service
 
 import (
 	"github.com/google/uuid"
+	"github.com/katakuxiko/Diplom/internal/dto"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/repository"
 	"github.com/katakuxiko/Diplom/internal/utils"
@@ -24,7 +25,7 @@ func (s *AdminService) GetByID(id uuid.UUID) (*models.Admin, error) {
 }
 
 // service/admin_service.go
-func (s *AdminService) Create(req *models.AdminCreateRequest) (*models.Admin, error) {
+func (s *AdminService) Create(req *dto.AdminCreateRequest) (*models.Admin, error) {
 
 	PasswordHash, err := utils.HashPassword(req.Password)
 	if err != nil {

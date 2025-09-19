@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/katakuxiko/Diplom/internal/dto"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/repository"
 )
@@ -13,7 +14,7 @@ func NewChatService(repo *repository.ChatRepository) *ChatService {
 	return &ChatService{repo: repo}
 }
 
-func (s *ChatService) Create(req *models.ChatCreateRequest) (*models.Chat, error) {
+func (s *ChatService) Create(req *dto.ChatCreateRequest) (*models.Chat, error) {
 	chat := &models.Chat{
 		AdminID: req.AdminID,
 		Name:    req.Name,
