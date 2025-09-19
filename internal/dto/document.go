@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/katakuxiko/Diplom/internal/models"
 )
 
 type CreateDocumentDTO struct {
@@ -18,6 +19,13 @@ type DocumentResponseDTO struct {
 	Protected   bool      `json:"protected"`
 	AccessLevel int       `json:"access_level"`
 	CreatedDate time.Time `json:"created_date"`
+}
+
+type PaginatedDocuments struct {
+	Documents   []models.Document `json:"documents"`
+	Total       int64             `json:"total"`
+	TotalPages  int               `json:"total_pages"`
+	CurrentPage int               `json:"current_page"`
 }
 
 type DocumentIngestResponse struct {

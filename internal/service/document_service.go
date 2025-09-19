@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/config"
+	"github.com/katakuxiko/Diplom/internal/dto"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/repository"
 	"github.com/katakuxiko/Diplom/internal/storage"
@@ -54,8 +55,25 @@ func (s *DocumentService) GetDownloadLink(id uuid.UUID) (string, error) {
 }
 
 // GetAllDocuments — список документов
-func (s *DocumentService) GetAllDocuments() ([]models.Document, error) {
-	return s.repo.GetAll()
+func (s *DocumentService) GetAllDocumentsPaginated(limit, page int) (*dto.PaginatedDocuments, error) {
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * limit
+
+	docs, total, err := s.repo.GetAllPaginated(limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	totalPages := int((total + int64(limit) - 1) / int64(limit)) // округляем вверх
+
+	return &dto.PaginatedDocuments{
+		Documents:   docs,
+		Total:       total,
+		TotalPages:  totalPages,
+		CurrentPage: page,
+	}, nil
 }
 
 // GetDocument — один документ по ID

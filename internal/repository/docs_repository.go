@@ -24,10 +24,18 @@ func (r *DocumentRepository) GetByID(id uuid.UUID) (*models.Document, error) {
 	return &doc, err
 }
 
-func (r *DocumentRepository) GetAll() ([]models.Document, error) {
+func (r *DocumentRepository) GetAllPaginated(limit, offset int) ([]models.Document, int64, error) {
 	var docs []models.Document
-	err := r.db.Find(&docs).Error
-	return docs, err
+	var total int64
+
+	// Считаем общее количество
+	if err := r.db.Model(&models.Document{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Получаем страницу документов
+	err := r.db.Limit(limit).Offset(offset).Find(&docs).Error
+	return docs, total, err
 }
 
 func (r *DocumentRepository) Update(doc *models.Document) error {

@@ -61,19 +61,25 @@ func CreateDocument(c *fiber.Ctx) error {
 }
 
 // GetDocuments godoc
-// @Summary      Получить все документы
-// @Description  Возвращает список документов
+// @Summary      Получить документы с пагинацией
+// @Description  Возвращает список документов с пагинацией
 // @Tags         documents
 // @Produce      json
-// @Success      200 {array} dto.DocumentResponseDTO
+// @Param        page  query     int  false  "Номер страницы"  default(1)
+// @Param        limit query     int  false  "Количество документов на странице"  default(10)
+// @Success      200 {object} dto.PaginatedDocuments
 // @Failure      500 {object} map[string]string
 // @Router       /documents [get]
 func GetDocuments(c *fiber.Ctx) error {
-	docs, err := documentService.GetAllDocuments()
+	page := c.QueryInt("page", 1)
+	limit := c.QueryInt("limit", 10)
+
+	paginatedDocs, err := documentService.GetAllDocumentsPaginated(limit, page)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(docs)
+
+	return c.JSON(paginatedDocs)
 }
 
 // GetDocumentByID godoc
