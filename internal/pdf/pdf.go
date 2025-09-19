@@ -1,18 +1,17 @@
 package pdf
 
 import (
-	"os/exec"
 	"strings"
+
+	"code.sajari.com/docconv"
 )
 
-// TODO: USE https://github.com/sajari/docconv
 func ExtractText(path string) (string, error) {
-	cmd := exec.Command("pdftotext", "-enc", "UTF-8", path, "-")
-	out, err := cmd.Output()
+	res, err := docconv.ConvertPath(path)
 	if err != nil {
 		return "", err
 	}
-	return string(out), nil
+	return res.Body, nil
 }
 
 func Sanitize(s string) string {

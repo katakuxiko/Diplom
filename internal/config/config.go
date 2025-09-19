@@ -22,7 +22,6 @@ type Config struct {
 	MinioUseSSL   bool
 }
 
-// TODO: get from .env file
 func Load() *Config {
 	if err := godotenv.Load(); err != nil {
 		log.Println("  .env файл не найден, используем системные переменные")

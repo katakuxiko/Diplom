@@ -40,14 +40,14 @@ func NewDocumentHandler(
 // UploadAndIngestPDF загружает PDF, сохраняет в MinIO, извлекает текст,
 // дробит на chunks и сохраняет в БД вместе с embeddings.
 //
-// @Summary      Upload and ingest PDF
-// @Description  Загружает PDF-документ, сохраняет его в MinIO, извлекает текст,
+// @Summary      Upload and ingest documents
+// @Description  Загружает документ, сохраняет его в MinIO, извлекает текст,
 // @Description  дробит на части и сохраняет embeddings в базе данных.
 // @Tags         documents
 // @Accept       multipart/form-data
 // @Produce      json
 // @Param        chat_id formData string true "Chat ID (uuid)"
-// @Param        file formData file true "PDF file"
+// @Param        file formData file true "document file"
 // @Success      200 {object} dto.DocumentIngestResponse
 // @Failure      400 {object} map[string]string
 // @Failure      500 {object} map[string]string

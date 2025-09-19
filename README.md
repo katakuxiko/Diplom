@@ -28,3 +28,8 @@ minio start
 ```
  .\minio.exe server C:\minio\data --console-address ":9090"
 ```
+
+To extract text need install 
+```
+https://github.com/oschwartz10612/poppler-windows/releases
+```
