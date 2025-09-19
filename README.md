@@ -2,9 +2,18 @@ To use LLM need LM STUDIO
 
 DB PostgresSQL
 
-if you have own config, use command in bash like
+if you have own config, use .env file
 ```
- export SERVER_ADDR=":8080"
+ SERVER_ADDR=":8080"
+```
+
+Start with refresh
+
+```
+go install github.com/air-verse/air@latest
+```
+```
+air
 ```
 
 swagger initialization:

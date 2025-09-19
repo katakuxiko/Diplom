@@ -13,7 +13,7 @@ type Admin struct {
 	Username     string    `gorm:"unique;not null"`
 	PasswordHash string    `gorm:"not null"`
 	IsSuperUser  bool      `gorm:"default:false"`
-	Chats        []Chat    `gorm:"foreignKey:AdminID"`
+	Chats        []Chat    `gorm:"foreignKey:AdminID" swaggerignore:"true"`
 }
 
 // Чаты
@@ -24,11 +24,11 @@ type Chat struct {
 	Name        string `gorm:"not null"`
 	Descr       string
 	CreatedDate time.Time     `gorm:"default:now()"`
-	Documents   []Document    `gorm:"foreignKey:ChatID"`
-	Settings    []ChatSetting `gorm:"foreignKey:ChatID"`
-	Roles       []Role        `gorm:"foreignKey:ChatID"`
-	Users       []ChatUser    `gorm:"foreignKey:ChatID"`
-	History     []ChatHistory `gorm:"foreignKey:ChatID"`
+	Documents   []Document    `gorm:"foreignKey:ChatID" swaggerignore:"true"`
+	Settings    []ChatSetting `gorm:"foreignKey:ChatID" swaggerignore:"true"`
+	Roles       []Role        `gorm:"foreignKey:ChatID" swaggerignore:"true"`
+	Users       []ChatUser    `gorm:"foreignKey:ChatID" swaggerignore:"true"`
+	History     []ChatHistory `gorm:"foreignKey:ChatID" swaggerignore:"true"`
 }
 
 // Документы
@@ -41,7 +41,7 @@ type Document struct {
 	Protected   bool      `gorm:"default:false"`
 	AccessLevel int       `gorm:"default:0"`
 	CreatedDate time.Time `gorm:"default:now()"`
-	Chunks      []Chunk   `gorm:"foreignKey:DocID"`
+	Chunks      []Chunk   `gorm:"foreignKey:DocID" swaggerignore:"true"`
 }
 
 // Чанки
@@ -53,7 +53,7 @@ type Chunk struct {
 	Embedding pgvector.Vector `gorm:"type:vector(768)" swaggerignore:"true"`
 	Filepath  string
 	ChunkName string
-	Document  Document `gorm:"foreignKey:DocID;references:ID"`
+	Document  Document `gorm:"foreignKey:DocID;references:ID" swaggerignore:"true"`
 }
 
 // Настройки чата
@@ -76,7 +76,7 @@ type Role struct {
 	Chat        Chat
 	Name        string
 	AccessLevel int        `gorm:"default:0"`
-	Users       []ChatUser `gorm:"foreignKey:UserRole"`
+	Users       []ChatUser `gorm:"foreignKey:UserRole" swaggerignore:"true"`
 }
 
 // Пользователи чата
@@ -89,7 +89,7 @@ type ChatUser struct {
 	Username     string
 	UserInfo     string
 	PasswordHash string
-	History      []ChatHistory `gorm:"foreignKey:UserID"`
+	History      []ChatHistory `gorm:"foreignKey:UserID" swaggerignore:"true"`
 }
 
 // История чата
@@ -99,7 +99,7 @@ type ChatHistory struct {
 	Chat     Chat
 	UserID   uuid.UUID `gorm:"type:uuid;not null"`
 	User     ChatUser
-	Messages []Message `gorm:"foreignKey:ChatHistoryID"`
+	Messages []Message `gorm:"foreignKey:ChatHistoryID" swaggerignore:"true"`
 }
 
 // Сообщения
@@ -109,5 +109,5 @@ type Message struct {
 	ChatHistory   ChatHistory
 	Text          string
 	Role          string
-	CreatedDate   time.Time `gorm:"default:now()"`
+	CreatedDate   time.Time `gorm:"default:now()" swaggerignore:"true"`
 }

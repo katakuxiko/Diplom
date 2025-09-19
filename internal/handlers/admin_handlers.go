@@ -22,7 +22,7 @@ func RegisterAdminRoutes(app *fiber.App, svc *service.AdminService) {
 }
 
 // GetAdmins godoc
-// @Summary		Получить всех админов
+// @Summary		Получить всех админов 1
 // @Description	Возвращает список админов
 // @Tags			admins
 // @Produce		json
