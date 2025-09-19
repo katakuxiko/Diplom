@@ -8,7 +8,6 @@ import (
 
 type CreateDocumentDTO struct {
 	ChatID uuid.UUID `form:"chat_id" validate:"required"`
-	Name   string    `form:"name" validate:"required"`
 }
 
 type DocumentResponseDTO struct {

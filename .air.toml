@@ -2,4 +2,4 @@
   cmd = "go build -o ./tmp/main.exe ./cmd/server/main.go"
   bin = "tmp/main.exe"
   full_bin = "tmp/main.exe"
-  exclude_dir = 'data'
+  exclude_dir = 'docs'

@@ -3,14 +3,17 @@ package handlers
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/katakuxiko/Diplom/internal/config"
 	"github.com/katakuxiko/Diplom/internal/service"
 )
 
 var documentService *service.DocumentService
+var cfg *config.Config
 
 // RegisterDocumentRoutes регистрирует CRUD эндпоинты для документов
-func RegisterDocumentRoutes(app *fiber.App, svc *service.DocumentService) {
+func RegisterDocumentRoutes(app *fiber.App, svc *service.DocumentService, cfgo *config.Config) {
 	documentService = svc
+	cfg = cfgo
 	r := app.Group("/documents")
 
 	r.Post("/", CreateDocument)
@@ -26,7 +29,6 @@ func RegisterDocumentRoutes(app *fiber.App, svc *service.DocumentService) {
 // @Accept       multipart/form-data
 // @Produce      json
 // @Param        chat_id formData string true "Chat ID (UUID)"
-// @Param        name    formData string true "Document name"
 // @Param        file    formData file   true "Document file"
 // @Success      201 {object} dto.DocumentResponseDTO
 // @Failure      400 {object} map[string]string
@@ -36,11 +38,6 @@ func CreateDocument(c *fiber.Ctx) error {
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "file is required"})
-	}
-
-	name := c.FormValue("name")
-	if name == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "name is required"})
 	}
 
 	chatIDStr := c.FormValue("chat_id")
@@ -55,7 +52,7 @@ func CreateDocument(c *fiber.Ctx) error {
 	}
 	defer file.Close()
 
-	doc, err := documentService.CreateDocument(chatID, name, file, fileHeader)
+	doc, err := documentService.CreateDocument(chatID, file, fileHeader, cfg)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}

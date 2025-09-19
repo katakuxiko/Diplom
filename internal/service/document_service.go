@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/katakuxiko/Diplom/internal/config"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/repository"
 	"github.com/katakuxiko/Diplom/internal/storage"
@@ -20,10 +21,11 @@ func NewDocumentService(repo *repository.DocumentRepository, storage *storage.Mi
 	return &DocumentService{repo: repo, storage: storage}
 }
 
-func (s *DocumentService) CreateDocument(chatID uuid.UUID, name string, file multipart.File, fileHeader *multipart.FileHeader) (*models.Document, error) {
+func (s *DocumentService) CreateDocument(chatID uuid.UUID, file multipart.File, fileHeader *multipart.FileHeader, cfg *config.Config) (*models.Document, error) {
 	docID := uuid.New()
 	objectName := fmt.Sprintf("%s/%s", chatID.String(), fileHeader.Filename)
-
+	path := fmt.Sprintf("%s/%s/%s", cfg.MinioEndpoint, cfg.MinioBucket, objectName)
+	print(objectName)
 	// загрузка в MinIO через storage
 	if _, err := s.storage.UploadFile(objectName, file, fileHeader); err != nil {
 		return nil, err
@@ -32,8 +34,8 @@ func (s *DocumentService) CreateDocument(chatID uuid.UUID, name string, file mul
 	doc := &models.Document{
 		ID:          docID,
 		ChatID:      chatID,
-		Name:        name,
-		Path:        objectName,
+		Name:        fileHeader.Filename,
+		Path:        path,
 		CreatedDate: time.Now(),
 	}
 	if err := s.repo.Create(doc); err != nil {
