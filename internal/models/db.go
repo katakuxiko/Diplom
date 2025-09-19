@@ -35,13 +35,13 @@ type Chat struct {
 type Document struct {
 	ID          uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
 	ChatID      uuid.UUID `gorm:"type:uuid;not null"`
-	Chat        Chat
-	Name        string `gorm:"not null"`
+	Name        string    `gorm:"not null"`
 	Path        string
 	Protected   bool      `gorm:"default:false"`
 	AccessLevel int       `gorm:"default:0"`
 	CreatedDate time.Time `gorm:"default:now()"`
-	Chunks      []Chunk   `gorm:"foreignKey:DocID" swaggerignore:"true"`
+	Chat        Chat      `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:ChatID" json:"-"`
+	Chunks      []Chunk   `gorm:"foreignKey:DocID" swaggerignore:"true" json:"-"`
 }
 
 // Чанки
