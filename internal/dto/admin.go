@@ -15,3 +15,15 @@ type AdminResponse struct {
 	Username    string    `json:"username"`
 	IsSuperUser bool      `json:"is_super_user"`
 }
+
+// DTO для запроса авторизации
+type AdminAuthRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// DTO для ответа с токенами
+type AuthTokensResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}
