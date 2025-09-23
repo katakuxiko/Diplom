@@ -33,3 +33,9 @@ To extract text need install
 ```
 https://github.com/oschwartz10612/poppler-windows/releases
 ```
+
+pg vector
+
+```
+https://github.com/pgvector/pgvector
+```
