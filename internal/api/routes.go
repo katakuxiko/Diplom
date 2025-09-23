@@ -13,14 +13,17 @@ func RegisterRoutes(app *fiber.App, cfg *config.Config, rag *service.RAGService,
 	h := NewHandler(rag, llm, chunkService)
 	docH := handlers.NewDocumentHandler(documentService, chunkService, llm, cfg)
 
-	handlers.RegisterAdminRoutes(app, adminService)
-	handlers.RegisterDocumentRoutes(app, documentService, cfg)
-	routes.RegisterChatRoutes(app, chatService)
-
-	app.Post("/documents/upload", docH.UploadAndIngestPDF)
-
+	// Публичные маршруты
 	app.Get("/health", h.Health)
 	app.Get("/models", h.ListModels)
-	app.Post("/ingest", h.IngestPDF)
-	app.Post("/ask", h.AskQuestion)
+	// Эндпоинт авторизации уже зарегистрирован в RegisterAdminRoutes
+
+	// Группа защищённых маршрутов
+	api := app.Group("/", AuthMiddleware)
+	handlers.RegisterAdminRoutes(api, adminService)
+	handlers.RegisterDocumentRoutes(api, documentService, cfg)
+	routes.RegisterChatRoutes(api, chatService)
+	api.Post("/documents/upload", docH.UploadAndIngestPDF)
+	api.Post("/ingest", h.IngestPDF)
+	api.Post("/ask", h.AskQuestion)
 }

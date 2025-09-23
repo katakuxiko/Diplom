@@ -20,6 +20,27 @@ type Handler struct {
 	chunkService *service.ChunkService
 }
 
+// Middleware для авторизации по JWT access token
+func AuthMiddleware(c *fiber.Ctx) error {
+	authHeader := c.Get("Authorization")
+	if authHeader == "" {
+		return c.Status(401).JSON(fiber.Map{"error": "missing token"})
+	}
+	// Ожидается формат: Bearer <token>
+	var tokenStr string
+	fmt.Sscanf(authHeader, "Bearer %s", &tokenStr)
+	if tokenStr == "" {
+		return c.Status(401).JSON(fiber.Map{"error": "invalid token format"})
+	}
+	claims, err := service.ParseJWT(tokenStr)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": "invalid token"})
+	}
+	// Сохраняем AdminID в локальный контекст Fiber
+	c.Locals("admin_id", claims.AdminID)
+	return c.Next()
+}
+
 // NewHandler конструктор
 func NewHandler(rag *service.RAGService, llm *service.LLMClient, chunkService *service.ChunkService) *Handler {
 	return &Handler{rag: rag, llm: llm, chunkService: chunkService}
