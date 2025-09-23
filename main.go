@@ -50,9 +50,8 @@ func main() {
 	documentService := service.NewDocumentService(documentRepo, minioClient)
 	// api
 	app := fiber.New()
-	api.RegisterRoutes(app, cfg, rag, llm, chunkService, adminService, chatService, documentService)
-
 	app.Get("/swagger/*", swagger.WrapHandler)
+	api.RegisterRoutes(app, cfg, rag, llm, chunkService, adminService, chatService, documentService)
 
 	log.Printf("🚀 Server started at %s", cfg.ServerAddr)
 	log.Fatal(app.Listen(cfg.ServerAddr))

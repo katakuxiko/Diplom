@@ -35,8 +35,8 @@ func Load() *Config {
 		LMBaseURL:     getenv("LMSTUDIO_BASE_URL", "http://localhost:1234/v1"),
 
 		MinioEndpoint: getenv("MINIO_ENDPOINT", "localhost:9000"),
-		MinioAccess:   getenv("MINIO_ACCESS_KEY", "minioadmin"),
-		MinioSecret:   getenv("MINIO_SECRET_KEY", "minioadmin"),
+		MinioAccess:   getenv("MINIO_ACCESS_KEY", "admin"),
+		MinioSecret:   getenv("MINIO_SECRET_KEY", "password123"),
 		MinioBucket:   getenv("MINIO_BUCKET", "documents"),
 		MinioUseSSL:   getenvBool("MINIO_USE_SSL", false),
 	}
