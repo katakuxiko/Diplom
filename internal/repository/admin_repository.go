@@ -40,12 +40,3 @@ func (r *AdminRepository) Update(admin *models.Admin) error {
 func (r *AdminRepository) Delete(id uuid.UUID) error {
 	return r.db.Delete(&models.Admin{}, "id = ?", id).Error
 }
-
-func (r *AdminRepository) GetByUsername(username string) (*models.Admin, error) {
-	var admin models.Admin
-	err := r.db.First(&admin, "username = ?", username).Error
-	if err != nil {
-		return nil, err
-	}
-	return &admin, nil
-}

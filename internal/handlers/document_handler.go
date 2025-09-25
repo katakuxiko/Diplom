@@ -11,10 +11,10 @@ var documentService *service.DocumentService
 var cfg *config.Config
 
 // RegisterDocumentRoutes регистрирует CRUD эндпоинты для документов
-func RegisterDocumentRoutes(router fiber.Router, svc *service.DocumentService, cfgo *config.Config) {
+func RegisterDocumentRoutes(app *fiber.App, svc *service.DocumentService, cfgo *config.Config) {
 	documentService = svc
 	cfg = cfgo
-	r := router.Group("/documents")
+	r := app.Group("/documents")
 
 	r.Post("/", CreateDocument)
 	r.Get("/", GetDocuments)

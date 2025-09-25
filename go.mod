@@ -42,7 +42,6 @@ require (
 	github.com/go-openapi/swag/yamlutils v0.24.0 // indirect
 	github.com/go-resty/resty/v2 v2.3.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
-	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect

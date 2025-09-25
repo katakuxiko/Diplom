@@ -8,9 +8,9 @@ import (
 
 var chatService *service.ChatService
 
-func RegisterChatRoutes(router fiber.Router, svc *service.ChatService) {
+func RegisterChatRoutes(app *fiber.App, svc *service.ChatService) {
 	chatService = svc
-	r := router.Group("/chats")
+	r := app.Group("/chats")
 
 	r.Get("/", handlers.ListChats(chatService))
 	r.Get("/:id", handlers.GetChat(chatService))
