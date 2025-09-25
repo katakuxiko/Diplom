@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"fmt"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/katakuxiko/Diplom/internal/dto"
@@ -74,11 +72,10 @@ func ListChats(chatService *service.ChatService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		claims := c.Locals("user").(jwt.MapClaims)
 		adminID, ok := claims["id"].(string)
-		fmt.Println("chat2")
-		fmt.Println(adminID, ok)
-		fmt.Println(adminID)
-		fmt.Println(claims)
-		chats, err := chatService.List()
+		if !ok {
+			return c.Status(401).JSON(fiber.Map{"error": "invalid token claims"})
+		}
+		chats, err := chatService.ListByAdmin(adminID)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 		}

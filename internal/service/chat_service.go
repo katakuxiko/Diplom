@@ -37,3 +37,7 @@ func (s *ChatService) List() ([]models.Chat, error) {
 func (s *ChatService) Delete(id string) error {
 	return s.repo.Delete(id)
 }
+
+func (s *ChatService) ListByAdmin(adminID string) ([]models.Chat, error) {
+	return s.repo.ListByAdmin(adminID)
+}
