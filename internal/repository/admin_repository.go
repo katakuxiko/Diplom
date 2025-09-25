@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"errors"
+
 	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"gorm.io/gorm"
@@ -40,3 +42,15 @@ func (r *AdminRepository) Update(admin *models.Admin) error {
 func (r *AdminRepository) Delete(id uuid.UUID) error {
 	return r.db.Delete(&models.Admin{}, "id = ?", id).Error
 }
+
+func (r *AdminRepository) GetByUsername(username string) (*models.Admin, error) {
+	var admin models.Admin
+	if err := r.db.Where("username = ?", username).First(&admin).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &admin, nil
+}
+ 

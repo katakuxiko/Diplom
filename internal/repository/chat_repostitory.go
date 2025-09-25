@@ -36,3 +36,11 @@ func (r *ChatRepository) List() ([]models.Chat, error) {
 func (r *ChatRepository) Delete(id string) error {
 	return r.db.Delete(&models.Chat{}, "id = ?", id).Error
 }
+
+func (r *ChatRepository) ListByAdmin(adminID string) ([]models.Chat, error) {
+	var chats []models.Chat
+	if err := r.db.Where("admin_id = ?", adminID).Find(&chats).Error; err != nil {
+		return nil, err
+	}
+	return chats, nil
+}

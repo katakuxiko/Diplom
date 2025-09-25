@@ -20,6 +20,10 @@ import (
 // @description	API для дипломного проекта asd
 // @host			localhost:8080
 // @BasePath		/
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Введите JWT токен в формате: Bearer {your token}
 func main() {
 	// config
 	cfg := config.Load()

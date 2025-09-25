@@ -52,6 +52,7 @@ func NewDocumentHandler(
 // @Failure      400 {object} map[string]string
 // @Failure      500 {object} map[string]string
 // @Router       /documents/upload [post]
+// @Security     BearerAuth
 func (h *DocumentHandler) UploadAndIngestPDF(c *fiber.Ctx) error {
 	// --- 1. Получаем файл
 	fileHeader, err := c.FormFile("file")

@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/config"
+	"github.com/katakuxiko/Diplom/internal/middleware"
 	"github.com/katakuxiko/Diplom/internal/service"
 )
 
@@ -14,7 +15,7 @@ var cfg *config.Config
 func RegisterDocumentRoutes(app *fiber.App, svc *service.DocumentService, cfgo *config.Config) {
 	documentService = svc
 	cfg = cfgo
-	r := app.Group("/documents")
+	r := app.Group("/documents", middleware.JWTProtected())
 
 	r.Post("/", CreateDocument)
 	r.Get("/", GetDocuments)
@@ -34,6 +35,7 @@ func RegisterDocumentRoutes(app *fiber.App, svc *service.DocumentService, cfgo *
 // @Failure      400 {object} map[string]string
 // @Failure      500 {object} map[string]string
 // @Router       /documents [post]
+// @Security     BearerAuth
 func CreateDocument(c *fiber.Ctx) error {
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
@@ -70,6 +72,7 @@ func CreateDocument(c *fiber.Ctx) error {
 // @Success      200 {object} dto.PaginatedDocuments
 // @Failure      500 {object} map[string]string
 // @Router       /documents [get]
+// @Security     BearerAuth
 func GetDocuments(c *fiber.Ctx) error {
 	page := c.QueryInt("page", 1)
 	limit := c.QueryInt("limit", 10)
@@ -92,6 +95,7 @@ func GetDocuments(c *fiber.Ctx) error {
 // @Failure      400 {object} map[string]string
 // @Failure      404 {object} map[string]string
 // @Router       /documents/{id} [get]
+// @Security     BearerAuth
 func GetDocumentByID(c *fiber.Ctx) error {
 	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {
@@ -115,6 +119,7 @@ func GetDocumentByID(c *fiber.Ctx) error {
 // @Failure      400 {object} map[string]string
 // @Failure      500 {object} map[string]string
 // @Router       /documents/{id} [delete]
+// @Security     BearerAuth
 func DeleteDocument(c *fiber.Ctx) error {
 	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {

@@ -51,3 +51,11 @@ func (s *AdminService) Update(admin *models.Admin) error {
 func (s *AdminService) Delete(id uuid.UUID) error {
 	return s.repo.Delete(id)
 }
+
+func (s *AdminService) GetByUsername(username string) (*models.Admin, error) {
+	return s.repo.GetByUsername(username)
+}
+
+func (s *AdminService) CheckPassword(password, hash string) bool {
+	return utils.CheckPassword(password, hash)
+}

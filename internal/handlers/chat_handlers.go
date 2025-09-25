@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"fmt"
+
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/katakuxiko/Diplom/internal/dto"
 	"github.com/katakuxiko/Diplom/internal/service"
 )
@@ -14,6 +17,7 @@ import (
 // @Param        chat body dto.ChatCreateRequest true "Chat object"
 // @Success      201 {object} dto.ChatResponse
 // @Router       /chats [post]
+// @Security     BearerAuth
 func CreateChat(chatService *service.ChatService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		var req dto.ChatCreateRequest
@@ -41,6 +45,7 @@ func CreateChat(chatService *service.ChatService) fiber.Handler {
 // @Param        id path string true "Chat ID"
 // @Success      200 {object} dto.ChatResponse
 // @Router       /chats/{id} [get]
+// @Security     BearerAuth
 func GetChat(chatService *service.ChatService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		id := c.Params("id")
@@ -64,8 +69,15 @@ func GetChat(chatService *service.ChatService) fiber.Handler {
 // @Produce      json
 // @Success      200 {array} dto.ChatResponse
 // @Router       /chats [get]
+// @Security     BearerAuth
 func ListChats(chatService *service.ChatService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		claims := c.Locals("user").(jwt.MapClaims)
+		adminID, ok := claims["id"].(string)
+		fmt.Println("chat2")
+		fmt.Println(adminID, ok)
+		fmt.Println(adminID)
+		fmt.Println(claims)
 		chats, err := chatService.List()
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -91,6 +103,7 @@ func ListChats(chatService *service.ChatService) fiber.Handler {
 // @Param        id path string true "Chat ID"
 // @Success      204
 // @Router       /chats/{id} [delete]
+// @Security     BearerAuth
 func DeleteChat(chatService *service.ChatService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		id := c.Params("id")
