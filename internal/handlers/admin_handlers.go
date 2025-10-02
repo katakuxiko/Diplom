@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/dto"
+	"github.com/katakuxiko/Diplom/internal/middleware"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/service"
 )
@@ -13,7 +14,7 @@ var adminService *service.AdminService
 // RegisterAdminRoutes регистрирует CRUD эндпоинты для админов
 func RegisterAdminRoutes(app *fiber.App, svc *service.AdminService) {
 	adminService = svc
-	r := app.Group("/admins")
+	r := app.Group("/admins", middleware.SuperadminProtected())
 
 	r.Get("/", GetAdmins)
 	r.Get("/:id", GetAdminByID)
@@ -23,13 +24,14 @@ func RegisterAdminRoutes(app *fiber.App, svc *service.AdminService) {
 }
 
 // GetAdmins godoc
-// @Summary		Получить всех админов 1
+// @Summary		Получить всех админов 
 // @Description	Возвращает список админов
 // @Tags			admins
 // @Produce		json
 // @Success		200	{array}		[]dto.AdminResponse
 // @Failure		500	{object}	map[string]string
 // @Router			/admins [get]
+// @Security     BearerAuth
 func GetAdmins(c *fiber.Ctx) error {
 	admins, err := adminService.GetAll()
 	if err != nil {

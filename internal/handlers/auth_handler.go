@@ -43,10 +43,16 @@ func LoginHandler(svc *service.AdminService, cfg *config.Config) fiber.Handler {
 				JSON(fiber.Map{"error": "invalid credentials"})
 		}
 
+		role := "user"
+
+		if admin.IsSuperUser {
+			role = "superuser"
+		}
+
 		// Создание токена
 		claims := jwt.MapClaims{
-			"id":  admin.ID.String(),
-			"superuser": admin.IsSuperUser,
+			"id":   admin.ID.String(),
+			"role": role,
 			"exp":  time.Now().Add(24 * time.Hour).Unix(),
 		}
 
