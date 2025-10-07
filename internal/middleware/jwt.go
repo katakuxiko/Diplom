@@ -35,7 +35,6 @@ func SuperadminProtected() fiber.Handler {
 				if hasSuperuserRole(claims) {
 					return c.Next()
 				}
-				fmt.Println("403 1")
 				return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
 			}
 		}
@@ -48,7 +47,6 @@ func SuperadminProtected() fiber.Handler {
 		}
 
 		if !hasSuperuserRole(claims) {
-			fmt.Println("403 2")
 			return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
 		}
 
