@@ -9,7 +9,7 @@ import (
 	"github.com/katakuxiko/Diplom/internal/service"
 )
 
-func RegisterRoutes(app *fiber.App, cfg *config.Config, rag *service.RAGService, llm *service.LLMClient, chunkService *service.ChunkService, adminService *service.AdminService, chatService *service.ChatService, documentService *service.DocumentService) {
+func RegisterRoutes(app *fiber.App, cfg *config.Config, rag *service.RAGService, llm *service.LLMClient, chunkService *service.ChunkService, adminService *service.AdminService, chatService *service.ChatService, documentService *service.DocumentService, chatuserService *service.ChatUserService) {
 
 	h := NewHandler(rag, llm, chunkService)
 	docH := handlers.NewDocumentHandler(documentService, chunkService, llm, cfg)
@@ -19,6 +19,7 @@ func RegisterRoutes(app *fiber.App, cfg *config.Config, rag *service.RAGService,
 	handlers.RegisterAdminRoutes(app, adminService)
 	handlers.RegisterDocumentRoutes(app, documentService, cfg)
 	routes.RegisterChatRoutes(app, chatService)
+	handlers.RegisterChatUserRoutes(app, chatuserService)
 
 	newApp := app.Group("", middleware.JWTProtected())
 	newApp.Post("/documents/upload", docH.UploadAndIngestPDF)
