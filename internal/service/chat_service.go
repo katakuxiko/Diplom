@@ -6,6 +6,15 @@ import (
 	"github.com/katakuxiko/Diplom/internal/repository"
 )
 
+// Интерфейс, который используют хендлеры и тесты
+type ChatServiceInterface interface {
+	Create(req *dto.ChatCreateRequest) (*models.Chat, error)
+	GetByID(id string) (*models.Chat, error)
+	ListByAdmin(adminID string) ([]models.Chat, error)
+	Delete(id string) error
+}
+
+// Основная реализация сервиса
 type ChatService struct {
 	repo *repository.ChatRepository
 }
@@ -30,14 +39,10 @@ func (s *ChatService) GetByID(id string) (*models.Chat, error) {
 	return s.repo.GetByID(id)
 }
 
-func (s *ChatService) List() ([]models.Chat, error) {
-	return s.repo.List()
+func (s *ChatService) ListByAdmin(adminID string) ([]models.Chat, error) {
+	return s.repo.ListByAdmin(adminID)
 }
 
 func (s *ChatService) Delete(id string) error {
 	return s.repo.Delete(id)
-}
-
-func (s *ChatService) ListByAdmin(adminID string) ([]models.Chat, error) {
-	return s.repo.ListByAdmin(adminID)
 }

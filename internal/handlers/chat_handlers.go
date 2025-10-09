@@ -16,16 +16,18 @@ import (
 // @Success      201 {object} dto.ChatResponse
 // @Router       /chats [post]
 // @Security     BearerAuth
-func CreateChat(chatService *service.ChatService) fiber.Handler {
+func CreateChat(chatService service.ChatServiceInterface) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		var req dto.ChatCreateRequest
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
+
 		chat, err := chatService.Create(&req)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 		}
+
 		return c.Status(201).JSON(dto.ChatResponse{
 			ID:          chat.ID,
 			AdminID:     chat.AdminID,
@@ -44,13 +46,15 @@ func CreateChat(chatService *service.ChatService) fiber.Handler {
 // @Success      200 {object} dto.ChatResponse
 // @Router       /chats/{id} [get]
 // @Security     BearerAuth
-func GetChat(chatService *service.ChatService) fiber.Handler {
+func GetChat(chatService service.ChatServiceInterface) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		id := c.Params("id")
+
 		chat, err := chatService.GetByID(id)
 		if err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "chat not found"})
 		}
+
 		return c.JSON(dto.ChatResponse{
 			ID:          chat.ID,
 			AdminID:     chat.AdminID,
@@ -68,13 +72,14 @@ func GetChat(chatService *service.ChatService) fiber.Handler {
 // @Success      200 {array} dto.ChatResponse
 // @Router       /chats [get]
 // @Security     BearerAuth
-func ListChats(chatService *service.ChatService) fiber.Handler {
+func ListChats(chatService service.ChatServiceInterface) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		claims := c.Locals("user").(jwt.MapClaims)
 		adminID, ok := claims["id"].(string)
 		if !ok {
 			return c.Status(401).JSON(fiber.Map{"error": "invalid token claims"})
 		}
+
 		chats, err := chatService.ListByAdmin(adminID)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -101,12 +106,14 @@ func ListChats(chatService *service.ChatService) fiber.Handler {
 // @Success      204
 // @Router       /chats/{id} [delete]
 // @Security     BearerAuth
-func DeleteChat(chatService *service.ChatService) fiber.Handler {
+func DeleteChat(chatService service.ChatServiceInterface) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		id := c.Params("id")
+
 		if err := chatService.Delete(id); err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 		}
+
 		return c.SendStatus(204)
 	}
 }

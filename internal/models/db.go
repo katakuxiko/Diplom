@@ -86,10 +86,10 @@ type ChatUser struct {
 	ChatID       uuid.UUID `gorm:"type:uuid;not null"`
 	Chat         Chat
 	UserRole     *uuid.UUID
-	Role         Role `gorm:"foreignKey:UserRole;references:ID"`
-	Username     string
+	Role         Role   `gorm:"foreignKey:UserRole;references:ID"`
+	Username     string `gorm:"not null"`
 	UserInfo     string
-	PasswordHash string
+	PasswordHash string        `gorm:"not null"`
 	History      []ChatHistory `gorm:"foreignKey:UserID" swaggerignore:"true"`
 }
 
