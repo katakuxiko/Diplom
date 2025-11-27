@@ -44,3 +44,7 @@ func (r *ChatRepository) ListByAdmin(adminID string) ([]models.Chat, error) {
 	}
 	return chats, nil
 }
+
+func (r *ChatRepository) Update(chat *models.Chat) error {
+	return r.db.Save(chat).Error
+}

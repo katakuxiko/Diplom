@@ -12,6 +12,7 @@ type ChatServiceInterface interface {
 	GetByID(id string) (*models.Chat, error)
 	ListByAdmin(adminID string) ([]models.Chat, error)
 	Delete(id string) error
+	Update(id string, req *dto.ChatUpdateRequest) (*models.Chat, error)
 }
 
 // Основная реализация сервиса
@@ -45,4 +46,22 @@ func (s *ChatService) ListByAdmin(adminID string) ([]models.Chat, error) {
 
 func (s *ChatService) Delete(id string) error {
 	return s.repo.Delete(id)
+}
+func (s *ChatService) Update(id string, req *dto.ChatUpdateRequest) (*models.Chat, error) {
+	chat, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Name != nil && *req.Name != "" {
+		chat.Name = *req.Name
+	}
+	if req.Descr != nil && *req.Descr != "" {
+		chat.Descr = *req.Descr
+	}
+
+	if err := s.repo.Update(chat); err != nil {
+		return nil, err
+	}
+	return chat, nil
 }

@@ -37,6 +37,10 @@ func LoginHandler(svc *service.AdminService, cfg *config.Config) fiber.Handler {
 			return c.Status(fiber.StatusUnauthorized).
 				JSON(fiber.Map{"error": "invalid credentials"})
 		}
+		if admin == nil {
+			return c.Status(fiber.StatusUnauthorized).
+				JSON(fiber.Map{"error": "invalid credentials"})
+		}
 
 		if !svc.CheckPassword(req.Password, admin.PasswordHash) {
 			return c.Status(fiber.StatusUnauthorized).

@@ -17,4 +17,5 @@ func RegisterChatRoutes(app *fiber.App, svc *service.ChatService) {
 	r.Get("/:id", handlers.GetChat(chatService))
 	r.Post("/", handlers.CreateChat(chatService))
 	r.Delete("/:id", handlers.DeleteChat(chatService))
+	r.Put("/:id", handlers.UpdateChat(chatService))
 }

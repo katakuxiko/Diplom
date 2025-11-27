@@ -32,3 +32,9 @@ type ChatDetailedResponse struct {
 	// Documents   []DocumentBrief `json:"documents"`
 	// Users       []ChatUserBrief `json:"users"`
 }
+
+// ChatUpdateRequest DTO для обновления чата
+type ChatUpdateRequest struct {
+	Name  *string `json:"name,omitempty" example:"Updated Project Chat"`
+	Descr *string `json:"descr,omitempty" example:"Обновленное описание проекта"`
+}

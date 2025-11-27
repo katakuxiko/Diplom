@@ -117,3 +117,36 @@ func DeleteChat(chatService service.ChatServiceInterface) fiber.Handler {
 		return c.SendStatus(204)
 	}
 }
+// UpdateChat godoc
+// @Summary      Обновить чат
+// @Tags         chats
+// @Accept       json
+// @Produce      json
+// @Param        id path string true "Chat ID"
+// @Param        chat body dto.ChatCreateRequest true "Chat object"
+// @Success      200 {object} dto.ChatResponse
+// @Router       /chats/{id} [put]
+// @Security     BearerAuth
+func UpdateChat(chatService service.ChatServiceInterface) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		id := c.Params("id")
+		
+		var req dto.ChatUpdateRequest
+		if err := c.BodyParser(&req); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		}
+
+		chat, err := chatService.Update(id, &req)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+
+		return c.JSON(dto.ChatResponse{
+			ID:          chat.ID,
+			AdminID:     chat.AdminID,
+			Name:        chat.Name,
+			Descr:       chat.Descr,
+			CreatedDate: chat.CreatedDate,
+		})
+	}
+}
