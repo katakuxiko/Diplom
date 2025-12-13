@@ -114,6 +114,7 @@ func (h *DocumentHandler) UploadAndIngestPDF(c *fiber.Ctx) error {
 			DocName:   doc.Name,
 			ChunkName: chunkName,
 			DocID:     doc.ID,
+			ChatID:    chatID,
 		}
 
 		emb, err := h.llm.Embedding(p)

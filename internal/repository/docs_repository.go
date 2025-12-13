@@ -24,17 +24,17 @@ func (r *DocumentRepository) GetByID(id uuid.UUID) (*models.Document, error) {
 	return &doc, err
 }
 
-func (r *DocumentRepository) GetAllPaginated(limit, offset int) ([]models.Document, int64, error) {
+func (r *DocumentRepository) GetAllPaginated(limit, offset int, chatID uuid.UUID) ([]models.Document, int64, error) {
 	var docs []models.Document
 	var total int64
 
-	// Считаем общее количество
-	if err := r.db.Model(&models.Document{}).Count(&total).Error; err != nil {
+	// Считаем общее количество документов по чату
+	if err := r.db.Model(&models.Document{}).Where("chat_id = ?", chatID).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	// Получаем страницу документов
-	err := r.db.Limit(limit).Offset(offset).Find(&docs).Error
+	// Получаем страницу документов по чату
+	err := r.db.Where("chat_id = ?", chatID).Limit(limit).Offset(offset).Find(&docs).Error
 	return docs, total, err
 }
 

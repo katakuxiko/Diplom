@@ -63,21 +63,28 @@ func CreateDocument(c *fiber.Ctx) error {
 }
 
 // GetDocuments godoc
-// @Summary      Получить документы с пагинацией
-// @Description  Возвращает список документов с пагинацией
+// @Summary      Получить документы чата с пагинацией
+// @Description  Возвращает список документов для конкретного чата с пагинацией
 // @Tags         documents
 // @Produce      json
-// @Param        page  query     int  false  "Номер страницы"  default(1)
-// @Param        limit query     int  false  "Количество документов на странице"  default(10)
+// @Param        chat_id query     string  true   "Chat ID (UUID)"
+// @Param        page    query     int     false  "Номер страницы"  default(1)
+// @Param        limit   query     int     false  "Количество документов на странице"  default(10)
 // @Success      200 {object} dto.PaginatedDocuments
+// @Failure      400 {object} map[string]string
 // @Failure      500 {object} map[string]string
 // @Router       /documents [get]
 // @Security     BearerAuth
 func GetDocuments(c *fiber.Ctx) error {
 	page := c.QueryInt("page", 1)
 	limit := c.QueryInt("limit", 10)
+	chatIDStr := c.Query("chat_id")
+	chatID, err := uuid.Parse(chatIDStr)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid chat_id"})
+	}
 
-	paginatedDocs, err := documentService.GetAllDocumentsPaginated(limit, page)
+	paginatedDocs, err := documentService.GetAllDocumentsPaginated(limit, page, chatID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}

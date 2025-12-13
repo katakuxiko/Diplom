@@ -55,13 +55,13 @@ func (s *DocumentService) GetDownloadLink(id uuid.UUID) (string, error) {
 }
 
 // GetAllDocuments — список документов
-func (s *DocumentService) GetAllDocumentsPaginated(limit, page int) (*dto.PaginatedDocuments, error) {
+func (s *DocumentService) GetAllDocumentsPaginated(limit, page int, chatID uuid.UUID) (*dto.PaginatedDocuments, error) {
 	if page < 1 {
 		page = 1
 	}
 	offset := (page - 1) * limit
 
-	docs, total, err := s.repo.GetAllPaginated(limit, offset)
+	docs, total, err := s.repo.GetAllPaginated(limit, offset, chatID)
 	if err != nil {
 		return nil, err
 	}

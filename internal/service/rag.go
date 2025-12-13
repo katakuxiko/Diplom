@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/repository"
 	"github.com/pgvector/pgvector-go"
@@ -19,14 +20,14 @@ func NewRAGService(ChunkRepository *repository.ChunkRepository, llm *LLMClient) 
 	return &RAGService{ChunkRepository: ChunkRepository, llm: llm}
 }
 
-func (s *RAGService) Ask(query string, topK int) (string, []models.Chunk, error) {
+func (s *RAGService) Ask(query string, topK int, chatID uuid.UUID) (string, []models.Chunk, error) {
 	v, err := s.llm.Embedding(query)
 	if err != nil {
 		return "", nil, fmt.Errorf("embedding error: %w", err)
 	}
 	vec := pgvector.NewVector(v)
 
-	chunks, err := s.ChunkRepository.SearchByVector(vec, topK)
+	chunks, err := s.ChunkRepository.SearchByVector(vec, topK, chatID)
 	if err != nil {
 		return "", nil, fmt.Errorf("search error: %w", err)
 	}

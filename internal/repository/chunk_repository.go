@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/pgvector/pgvector-go"
 	"gorm.io/gorm"
@@ -24,12 +25,13 @@ func (r *ChunkRepository) FindByDocID(docID string) ([]models.Chunk, error) {
 	return chunks, err
 }
 
-func (r *ChunkRepository) SearchByVector(vec pgvector.Vector, limit int) ([]models.Chunk, error) {
+func (r *ChunkRepository) SearchByVector(vec pgvector.Vector, limit int, chatID uuid.UUID) ([]models.Chunk, error) {
 	var chunks []models.Chunk
 	err := r.db.Raw(`
         SELECT * FROM chunks
+        WHERE chat_id = ?
         ORDER BY embedding <-> ?
         LIMIT ?
-    `, vec, limit).Scan(&chunks).Error
+    `, chatID, vec, limit).Scan(&chunks).Error
 	return chunks, err
 }

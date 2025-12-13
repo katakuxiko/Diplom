@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/repository"
 	"github.com/pgvector/pgvector-go"
@@ -21,6 +22,6 @@ func (s *ChunkService) SaveChunk(c models.Chunk, embedding []float32) error {
 	return s.repo.Add(c)
 }
 
-func (s *ChunkService) SearchSimilar(vec []float32, limit int) ([]models.Chunk, error) {
-	return s.repo.SearchByVector(pgvector.NewVector(vec), limit)
+func (s *ChunkService) SearchSimilar(vec []float32, limit int, chatID uuid.UUID) ([]models.Chunk, error) {
+	return s.repo.SearchByVector(pgvector.NewVector(vec), limit, chatID)
 }

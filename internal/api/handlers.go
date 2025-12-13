@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/pdf"
 	"github.com/katakuxiko/Diplom/internal/service"
@@ -130,8 +131,12 @@ func (h *Handler) AskQuestion(c *fiber.Ctx) error {
 	if k <= 0 {
 		k = 5
 	}
+
+	if req.ChatID == uuid.Nil {
+		return c.Status(400).JSON(fiber.Map{"error": "chat_id is required"})
+	}
 	// если модель указана, используем её; иначе — дефолт внутри LLMClient/Service
-	ans, ctxChunks, err := h.rag.Ask(req.Query, k)
+	ans, ctxChunks, err := h.rag.Ask(req.Query, k, req.ChatID)
 	if err != nil {
 		log.Printf("rag ask error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
