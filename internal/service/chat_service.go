@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/dto"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/repository"
@@ -9,6 +10,7 @@ import (
 // Интерфейс, который используют хендлеры и тесты
 type ChatServiceInterface interface {
 	Create(req *dto.ChatCreateRequest) (*models.Chat, error)
+	CreateForAdmin(adminID string, req *dto.ChatCreateRequest) (*models.Chat, error)
 	GetByID(id string) (*models.Chat, error)
 	ListByAdmin(adminID string) ([]models.Chat, error)
 	Delete(id string) error
@@ -25,8 +27,21 @@ func NewChatService(repo *repository.ChatRepository) *ChatService {
 }
 
 func (s *ChatService) Create(req *dto.ChatCreateRequest) (*models.Chat, error) {
+	return s.CreateForAdmin("", req)
+}
+
+func (s *ChatService) CreateForAdmin(adminID string, req *dto.ChatCreateRequest) (*models.Chat, error) {
+	var adminUUID *uuid.UUID
+	if adminID != "" {
+		id, err := uuid.Parse(adminID)
+		if err != nil {
+			return nil, err
+		}
+		adminUUID = &id
+	}
+
 	chat := &models.Chat{
-		AdminID: req.AdminID,
+		AdminID: adminUUID,
 		Name:    req.Name,
 		Descr:   req.Descr,
 	}

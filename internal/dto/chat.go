@@ -8,9 +8,8 @@ import (
 
 // ChatCreateRequest DTO для создания
 type ChatCreateRequest struct {
-	AdminID *uuid.UUID `json:"admin_id,omitempty"`
-	Name    string     `json:"name" example:"Project Chat"`
-	Descr   string     `json:"descr,omitempty" example:"Обсуждение проекта"`
+	Name  string `json:"name" example:"Project Chat"`
+	Descr string `json:"descr,omitempty" example:"Обсуждение проекта"`
 }
 
 // ChatResponse DTO для ответа (базовый)

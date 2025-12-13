@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"fmt"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/katakuxiko/Diplom/internal/dto"
@@ -18,12 +20,18 @@ import (
 // @Security     BearerAuth
 func CreateChat(chatService service.ChatServiceInterface) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		claims := c.Locals("user").(jwt.MapClaims)
+		adminID, ok := claims["id"].(string)
+		if !ok {
+			return c.Status(401).JSON(fiber.Map{"error": "invalid token claims"})
+		}
+
 		var req dto.ChatCreateRequest
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
 
-		chat, err := chatService.Create(&req)
+		chat, err := chatService.CreateForAdmin(adminID, &req)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 		}
@@ -81,6 +89,7 @@ func ListChats(chatService service.ChatServiceInterface) fiber.Handler {
 		}
 
 		chats, err := chatService.ListByAdmin(adminID)
+		fmt.Println(chats)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 		}
@@ -117,6 +126,7 @@ func DeleteChat(chatService service.ChatServiceInterface) fiber.Handler {
 		return c.SendStatus(204)
 	}
 }
+
 // UpdateChat godoc
 // @Summary      Обновить чат
 // @Tags         chats
@@ -130,7 +140,7 @@ func DeleteChat(chatService service.ChatServiceInterface) fiber.Handler {
 func UpdateChat(chatService service.ChatServiceInterface) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		id := c.Params("id")
-		
+
 		var req dto.ChatUpdateRequest
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
