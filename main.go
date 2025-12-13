@@ -55,6 +55,7 @@ func main() {
 	chunkService := service.NewChunkService(chunkRepo)
 	adminService := service.NewAdminService(adminRepo)
 	chatService := service.NewChatService(chatRepo)
+	chatService.SetDB(db)  // Передаем БД для удаления документов при удалении чата
 	documentService := service.NewDocumentService(documentRepo, minioClient)
 	chatUserService := service.NewChatUserService(chatuserRepo)
 	// api

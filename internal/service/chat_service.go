@@ -5,6 +5,7 @@ import (
 	"github.com/katakuxiko/Diplom/internal/dto"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/repository"
+	"gorm.io/gorm"
 )
 
 // Интерфейс, который используют хендлеры и тесты
@@ -15,15 +16,21 @@ type ChatServiceInterface interface {
 	ListByAdmin(adminID string) ([]models.Chat, error)
 	Delete(id string) error
 	Update(id string, req *dto.ChatUpdateRequest) (*models.Chat, error)
+	SetDB(db *gorm.DB)
 }
 
 // Основная реализация сервиса
 type ChatService struct {
 	repo *repository.ChatRepository
+	db   *gorm.DB
 }
 
 func NewChatService(repo *repository.ChatRepository) *ChatService {
 	return &ChatService{repo: repo}
+}
+
+func (s *ChatService) SetDB(db *gorm.DB) {
+	s.db = db
 }
 
 func (s *ChatService) Create(req *dto.ChatCreateRequest) (*models.Chat, error) {
@@ -60,6 +67,18 @@ func (s *ChatService) ListByAdmin(adminID string) ([]models.Chat, error) {
 }
 
 func (s *ChatService) Delete(id string) error {
+	// Сначала удаляем все документы чата
+	if s.db != nil {
+		// Удаляем все чанки для документов этого чата
+		if err := s.db.Where("chat_id = ?", id).Delete(&models.Chunk{}).Error; err != nil {
+			return err
+		}
+		// Удаляем все документы этого чата
+		if err := s.db.Where("chat_id = ?", id).Delete(&models.Document{}).Error; err != nil {
+			return err
+		}
+	}
+	// Теперь удаляем сам чат
 	return s.repo.Delete(id)
 }
 func (s *ChatService) Update(id string, req *dto.ChatUpdateRequest) (*models.Chat, error) {
