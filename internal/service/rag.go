@@ -34,7 +34,7 @@ func (s *RAGService) Ask(query string, topK int, chatID uuid.UUID) (string, []mo
 
 	var b strings.Builder
 	for _, ch := range chunks {
-		b.WriteString(fmt.Sprintf("[%s]\n%s\n\n", ch.ID, ch.Text))
+		b.WriteString(fmt.Sprintf("[%s]\n%s\n\n", ch.ChunkName, ch.Text))
 	}
 	ctx := b.String()
 	startTime := time.Now()
