@@ -55,9 +55,10 @@ func LoginHandler(svc *service.AdminService, cfg *config.Config) fiber.Handler {
 
 		// Создание токена
 		claims := jwt.MapClaims{
-			"id":   admin.ID.String(),
-			"role": role,
-			"exp":  time.Now().Add(24 * time.Hour).Unix(),
+			"id":       admin.ID.String(),
+			"role":     role,
+			"exp":      time.Now().Add(24 * time.Hour).Unix(),
+			"username": admin.Username,
 		}
 
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

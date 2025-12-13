@@ -8,13 +8,13 @@ import (
 	_ "github.com/katakuxiko/Diplom/docs"
 	"github.com/katakuxiko/Diplom/internal/api"
 	"github.com/katakuxiko/Diplom/internal/config"
+	"github.com/katakuxiko/Diplom/internal/dto"
 	"github.com/katakuxiko/Diplom/internal/repository"
 	"github.com/katakuxiko/Diplom/internal/service"
 	"github.com/katakuxiko/Diplom/internal/storage"
 	"github.com/katakuxiko/Diplom/internal/store"
 
 	swagger "github.com/swaggo/fiber-swagger"
-	
 )
 
 // @title			Diplom API
@@ -56,16 +56,32 @@ func main() {
 	adminService := service.NewAdminService(adminRepo)
 	chatService := service.NewChatService(chatRepo)
 	documentService := service.NewDocumentService(documentRepo, minioClient)
-	chatUserService := service.NewChatUserService(chatuserRepo) 
+	chatUserService := service.NewChatUserService(chatuserRepo)
 	// api
 	app := fiber.New()
 
-	app.Use(cors.New(cors.Config{
-    AllowOrigins: "*",
-    AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
-    AllowHeaders: "Origin, Content-Type, Accept, Authorization",
-}))
+	// Initialize default admin if not exists
+	existingAdmin, err := adminService.GetByUsername("admin")
+	if err != nil {
+		log.Fatal(err)
+	}
+	if existingAdmin == nil {
+		_, err := adminService.Create(&dto.AdminCreateRequest{
+			Username: "admin",
+			Password: "admin",
+			IsSuper:  true,
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Println("✓ Default admin created (login: admin, password: admin)")
+	}
 
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: "*",
+		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
+		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+	}))
 
 	app.Get("/swagger/*", swagger.WrapHandler)
 	api.RegisterRoutes(app, cfg, rag, llm, chunkService, adminService, chatService, documentService, chatUserService)
