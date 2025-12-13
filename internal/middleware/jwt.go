@@ -11,12 +11,10 @@ var JwtSecret []byte
 
 func JWTProtected() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		fmt.Printf("JWTProtected middleware called %v\n", JwtSecret)
 		claims, err := parseClaimsFromHeader(c)
 		if err != nil {
 			return err
 		}
-		fmt.Println(claims)
 
 		// сохранить claims в контекст
 		c.Locals("user", claims)
