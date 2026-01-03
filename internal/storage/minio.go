@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"io"
 	"log"
 	"mime/multipart"
 
@@ -62,13 +63,19 @@ func (s *MinioStorage) UploadFile(objectName string, file multipart.File, fileHe
 	return objectName, nil
 }
 
-// DownloadFile возвращает ссылку на файл (presigned URL)
-func (s *MinioStorage) DownloadFile(objectName string) (string, error) {
-	url, err := s.client.PresignedGetObject(context.Background(), s.bucket, objectName, 0, nil)
+// GetFile возвращает файл из MinIO
+func (s *MinioStorage) GetFile(objectName string) (io.ReadCloser, int64, string, error) {
+	obj, err := s.client.GetObject(context.Background(), s.bucket, objectName, minio.GetObjectOptions{})
 	if err != nil {
-		return "", err
+		return nil, 0, "", err
 	}
-	return url.String(), nil
+
+	stat, err := obj.Stat()
+	if err != nil {
+		return nil, 0, "", err
+	}
+
+	return obj, stat.Size, stat.ContentType, nil
 }
 
 // DeleteFile удаляет файл из MinIO

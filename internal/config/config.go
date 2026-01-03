@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
+	"github.com/katakuxiko/Diplom/internal/storage"
 )
 
 type Config struct {
@@ -20,6 +21,7 @@ type Config struct {
 	MinioSecret   string
 	MinioBucket   string
 	MinioUseSSL   bool
+	MinioStorage  *storage.MinioStorage
 
 	JWTSecret []byte
 }

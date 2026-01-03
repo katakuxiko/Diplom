@@ -79,7 +79,5 @@ func ensureExtension(db *gorm.DB) error {
 		}
 	}
 
-	// ANALYZE
-	_ = db.Exec(`ANALYZE chunks`).Error
 	return nil
 }

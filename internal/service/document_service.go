@@ -46,12 +46,8 @@ func (s *DocumentService) CreateDocument(chatID uuid.UUID, file multipart.File, 
 	return doc, nil
 }
 
-func (s *DocumentService) GetDownloadLink(id uuid.UUID) (string, error) {
-	doc, err := s.repo.GetByID(id)
-	if err != nil {
-		return "", err
-	}
-	return s.storage.DownloadFile(doc.Path)
+func (s *DocumentService) GetFile(id uuid.UUID) (*models.Document, error) {
+	return s.repo.GetByID(id)
 }
 
 // GetAllDocuments — список документов

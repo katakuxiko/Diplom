@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"io"
+	"log"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/config"
@@ -21,6 +24,9 @@ func RegisterDocumentRoutes(app *fiber.App, svc *service.DocumentService, cfgo *
 	r.Get("/", GetDocuments)
 	r.Get("/:id", GetDocumentByID)
 	r.Delete("/:id", DeleteDocument)
+
+	// Публичный эндпоинт для скачивания (без JWT)
+	app.Get("/documents/:id/download", DownloadDocument)
 }
 
 // CreateDocument godoc
@@ -115,6 +121,57 @@ func GetDocumentByID(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(doc)
+}
+
+// DownloadDocument godoc
+// @Summary      Скачать файл документа
+// @Description  Возвращает файл документа для скачивания
+// @Tags         documents
+// @Param        id path string true "Document ID"
+// @Produce      application/pdf
+// @Success      200 {file} binary
+// @Failure      400 {object} map[string]string
+// @Failure      404 {object} map[string]string
+// @Failure      500 {object} map[string]string
+// @Router       /documents/{id}/download [get]
+// @Security     BearerAuth
+func DownloadDocument(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		log.Printf("Invalid document ID: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "invalid id"})
+	}
+
+	doc, err := documentService.GetFile(id)
+	if err != nil {
+		log.Printf("Document not found: %v", err)
+		return c.Status(404).JSON(fiber.Map{"error": "document not found"})
+	}
+
+	// Получаем файл из MinIO через storage
+	file, _, contentType, err := cfg.MinioStorage.GetFile(doc.Path)
+	if err != nil {
+		log.Printf("Failed to get file from storage: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "failed to get file from storage"})
+	}
+	defer file.Close()
+
+	// Читаем весь файл в память
+	data, err := io.ReadAll(file)
+	if err != nil {
+		log.Printf("Failed to read file: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "failed to read file"})
+	}
+
+	// Устанавливаем заголовки
+	c.Set("Content-Type", contentType)
+	c.Set("Content-Disposition", "attachment; filename=\""+doc.Name+"\"")
+	c.Set("Access-Control-Expose-Headers", "Content-Disposition")
+
+	log.Printf("Sending file: %s, size: %d bytes", doc.Name, len(data))
+
+	// Отдаем файл
+	return c.Send(data)
 }
 
 // DeleteDocument godoc

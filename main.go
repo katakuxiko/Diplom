@@ -25,7 +25,7 @@ import (
 // @securityDefinitions.apikey BearerAuth
 // @in header
 // @name Authorization
-// @description Введите JWT токен в формате: Bearer {your token}
+// @description Введите JWT ток ен в формате: Bearer {your token}
 
 func main() {
 	// config
@@ -42,6 +42,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	cfg.MinioStorage = minioClient
 
 	// repo
 	chunkRepo := repository.NewChunkRepository(db)
@@ -59,7 +60,9 @@ func main() {
 	documentService := service.NewDocumentService(documentRepo, minioClient)
 	chatUserService := service.NewChatUserService(chatuserRepo)
 	// api
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		BodyLimit: 100 * 1024 * 1024, // 100 MB лимит для загрузки файлов
+	})
 
 	// Initialize default admin if not exists
 	existingAdmin, err := adminService.GetByUsername("admin")
