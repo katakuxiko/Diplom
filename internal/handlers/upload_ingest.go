@@ -99,7 +99,7 @@ func (h *DocumentHandler) UploadAndIngestPDF(c *fiber.Ctx) error {
 	// --- 5. Дробим на chunks
 	const chunkSize = 220
 	const chunkOverlap = 40
-	parts := pdf.ChunkByWords(txt, chunkSize, chunkOverlap)
+	parts := pdf.ChunkBySentences(txt, chunkSize, chunkOverlap)
 	if len(parts) == 0 {
 		return c.Status(400).JSON(fiber.Map{"error": "no chunks created"})
 	}
