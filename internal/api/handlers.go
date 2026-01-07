@@ -135,8 +135,18 @@ func (h *Handler) AskQuestion(c *fiber.Ctx) error {
 	if req.ChatID == uuid.Nil {
 		return c.Status(400).JSON(fiber.Map{"error": "chat_id is required"})
 	}
+
+	// Собираем настройки LLM
+	settings := req.Settings
+	if settings == nil {
+		settings = &models.AskSettings{}
+	}
+	if settings.Model == "" && req.Model != "" {
+		settings.Model = req.Model
+	}
+
 	// если модель указана, используем её; иначе — дефолт внутри LLMClient/Service
-	ans, ctxChunks, err := h.rag.Ask(req.Query, k, req.ChatID)
+	ans, ctxChunks, err := h.rag.Ask(req.Query, k, req.ChatID, settings)
 	if err != nil {
 		log.Printf("rag ask error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})

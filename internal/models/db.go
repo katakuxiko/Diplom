@@ -61,15 +61,15 @@ type Chunk struct {
 
 // Настройки чата
 type ChatSetting struct {
-	ID          uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
-	ChatID      uuid.UUID `gorm:"type:uuid;not null"`
-	Chat        Chat
-	HelloText   string
-	Name        string
-	Descr       string
-	URL         string
-	CreatedDate time.Time              `gorm:"default:now()"`
-	Settings    map[string]interface{} `gorm:"type:jsonb"`
+	ID          uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	ChatID      uuid.UUID `gorm:"type:uuid;not null" json:"chatID"`
+	Chat        Chat      `json:"-" swaggerignore:"true"`
+	HelloText   string    `json:"helloText"`
+	Name        string    `json:"name"`
+	Descr       string    `json:"descr"`
+	URL         string    `json:"url"`
+	CreatedDate time.Time `gorm:"default:now()" json:"createdDate"`
+	Settings    JSONB     `gorm:"type:jsonb" json:"settings"`
 }
 
 // Роли

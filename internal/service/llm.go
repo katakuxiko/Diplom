@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/katakuxiko/Diplom/internal/config"
+	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/sashabaranov/go-openai"
 )
 
@@ -44,8 +45,8 @@ func (l *LLMClient) Embedding(text string) ([]float32, error) {
 	return resp.Data[0].Embedding, nil
 }
 
-// Ask выполняет RAG/LLM запрос с контекстом
-func (l *LLMClient) Ask(query, contextText string) (string, error) {
+// Ask выполняет RAG/LLM запрос с контекстом и настраиваемыми параметрами
+func (l *LLMClient) Ask(query, contextText string, settings *models.AskSettings) (string, error) {
 	// Проверка на приветствие
 	greetings := []string{
 		"привет", "привет!", "здравствуй", "здравствуйте",
@@ -63,6 +64,10 @@ func (l *LLMClient) Ask(query, contextText string) (string, error) {
 		return "К сожалению, в загруженных документах не найдено информации по вашему запросу. Попробуйте переформулировать вопрос или загрузите дополнительные материалы.", nil
 	}
 
+	// Базовые дефолты, могут быть переопределены настройками
+	modelName := l.chatName
+	temperature := float32(0.7)
+	maxTokens := 2000
 	systemPrompt := `Ты - профессиональный аналитик документов. Твоя задача - давать точные, структурированные ответы на основе предоставленных материалов.
 
 КРИТИЧЕСКИЕ ПРАВИЛА:
@@ -78,6 +83,21 @@ func (l *LLMClient) Ask(query, contextText string) (string, error) {
 - Избегай упоминаний о "контексте", "документах" или своей природе как ИИ
 - Отвечай прямо на вопрос, без лишних вступлений`
 
+	if settings != nil {
+		if settings.Model != "" {
+			modelName = settings.Model
+		}
+		if settings.SystemPrompt != "" {
+			systemPrompt = settings.SystemPrompt
+		}
+		if settings.MaxTokens > 0 {
+			maxTokens = settings.MaxTokens
+		}
+		if settings.Temperature > 0 {
+			temperature = settings.Temperature
+		}
+	}
+
 	userPrompt := fmt.Sprintf(
 		"КОНТЕКСТ:\n%s\n\n"+
 			"ВОПРОС: %s\n\n"+
@@ -88,15 +108,15 @@ func (l *LLMClient) Ask(query, contextText string) (string, error) {
 	resp, err := l.client.CreateChatCompletion(
 		context.Background(),
 		openai.ChatCompletionRequest{
-			Model: l.chatName,
+			Model: modelName,
 			Messages: []openai.ChatCompletionMessage{
 				{Role: "system", Content: systemPrompt},
 				{Role: "user", Content: userPrompt},
 			},
-			Temperature:     0.1,  // Низкая для точности
-			TopP:            0.9,  // Фокус на наиболее вероятных токенах
-			MaxTokens:       1000, // Ограничение длины ответа
-			PresencePenalty: 0.1,  // Небольшое разнообразие
+			Temperature:     temperature,
+			TopP:            0.9, // Фокус на наиболее вероятных токенах
+			MaxTokens:       maxTokens,
+			PresencePenalty: 0.1, // Небольшое разнообразие
 		},
 	)
 	if err != nil {

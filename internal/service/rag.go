@@ -20,7 +20,7 @@ func NewRAGService(ChunkRepository *repository.ChunkRepository, llm *LLMClient) 
 	return &RAGService{ChunkRepository: ChunkRepository, llm: llm}
 }
 
-func (s *RAGService) Ask(query string, topK int, chatID uuid.UUID) (string, []models.Chunk, error) {
+func (s *RAGService) Ask(query string, topK int, chatID uuid.UUID, settings *models.AskSettings) (string, []models.Chunk, error) {
 	// Получаем больше чанков для последующей фильтрации
 	expandedTopK := topK * 2
 	if expandedTopK > 20 {
@@ -53,7 +53,7 @@ func (s *RAGService) Ask(query string, topK int, chatID uuid.UUID) (string, []mo
 	ctx := b.String()
 
 	startTime := time.Now()
-	answer, err := s.llm.Ask(query, ctx)
+	answer, err := s.llm.Ask(query, ctx, settings)
 	fmt.Printf("⏱️  LLM response time: %v\n", time.Since(startTime))
 	if err != nil {
 		return "", nil, fmt.Errorf("llm error: %w", err)

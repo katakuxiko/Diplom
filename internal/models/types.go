@@ -2,11 +2,22 @@ package models
 
 import "github.com/google/uuid"
 
+type AskSettings struct {
+	EnableHistory  bool    `json:"enableHistory"`
+	MaxTokens      int     `json:"maxTokens"`
+	Model          string  `json:"model"`
+	RequestsLimit  int     `json:"requestsLimit"`
+	RequestsWindow int     `json:"requestsWindow"`
+	SystemPrompt   string  `json:"systemPrompt"`
+	Temperature    float32 `json:"temperature"`
+}
+
 type AskRequest struct {
-	Query  string `json:"query"`
-	Model  string `json:"model,omitempty"`
-	TopK   int    `json:"topK,omitempty"`
-	ChatID uuid.UUID `json:"chat_id"`
+	Query    string       `json:"query"`
+	Model    string       `json:"model,omitempty"`
+	TopK     int          `json:"topK,omitempty"`
+	ChatID   uuid.UUID    `json:"chat_id"`
+	Settings *AskSettings `json:"settings,omitempty"`
 }
 
 type Rule struct {

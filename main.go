@@ -50,15 +50,19 @@ func main() {
 	chatRepo := repository.NewChatRepository(db)
 	documentRepo := repository.NewDocumentRepository(db)
 	chatuserRepo := repository.NewChatUserRepository(db)
+	chatSettingsRepo := repository.NewChatSettingsRepository(db)
 	// services
 	llm := service.NewLLMClient(cfg)
 	rag := service.NewRAGService(chunkRepo, llm)
 	chunkService := service.NewChunkService(chunkRepo)
 	adminService := service.NewAdminService(adminRepo)
+
 	chatService := service.NewChatService(chatRepo)
 	chatService.SetDB(db) // Передаем БД для удаления документов при удалении чата
 	documentService := service.NewDocumentService(documentRepo, minioClient)
 	chatUserService := service.NewChatUserService(chatuserRepo)
+	chatSettingsService := service.NewChatSettingsService(chatSettingsRepo)
+
 	// api
 	app := fiber.New(fiber.Config{
 		BodyLimit: 100 * 1024 * 1024, // 100 MB лимит для загрузки файлов
@@ -88,7 +92,7 @@ func main() {
 	}))
 
 	app.Get("/swagger/*", swagger.WrapHandler)
-	api.RegisterRoutes(app, cfg, rag, llm, chunkService, adminService, chatService, documentService, chatUserService)
+	api.RegisterRoutes(app, cfg, rag, llm, chunkService, adminService, chatService, documentService, chatUserService, chatSettingsService)
 
 	log.Printf("🚀 Server started at %s", cfg.ServerAddr)
 	log.Fatal(app.Listen(cfg.ServerAddr))

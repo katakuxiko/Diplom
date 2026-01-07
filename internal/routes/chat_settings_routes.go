@@ -6,9 +6,12 @@ import (
 )
 
 func RegisterChatSettingsRoutes(app *fiber.App, handler *handlers.ChatSettingsHandler) {
-	app.Get("/chat-settings", handler.ListChatSettings)
-	app.Get("/chat-settings/:id", handler.GetChatSettingsByID)
-	app.Post("/chat-settings", handler.CreateChatSettings)
-	app.Put("/chat-settings/:id", handler.UpdateChatSettings)
-	app.Delete("/chat-settings/:id", handler.DeleteChatSettings)
+	settings := app.Group("/chat-settings")
+
+	settings.Get("/", handler.ListChatSettings)
+	settings.Get("/chat/:chatId", handler.GetChatSettingsByChatID)
+	settings.Get("/:id", handler.GetChatSettingsByID)
+	settings.Post("/", handler.CreateOrUpdateChatSettings)
+	settings.Put("/:id", handler.UpdateChatSettings)
+	settings.Delete("/:id", handler.DeleteChatSettings)
 }
