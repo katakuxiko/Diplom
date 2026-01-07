@@ -63,7 +63,7 @@ type Chunk struct {
 type ChatSetting struct {
 	ID          uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	ChatID      uuid.UUID `gorm:"type:uuid;not null" json:"chatID"`
-	Chat        Chat      `json:"-" swaggerignore:"true"`
+	Chat        Chat      `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:ChatID" json:"-" swaggerignore:"true"`
 	HelloText   string    `json:"helloText"`
 	Name        string    `json:"name"`
 	Descr       string    `json:"descr"`

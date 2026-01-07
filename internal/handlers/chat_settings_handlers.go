@@ -2,12 +2,14 @@ package handlers
 
 import (
 	"context"
+	"errors"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/dto"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/service"
+	"gorm.io/gorm"
 )
 
 type ChatSettingsHandler struct {
@@ -82,7 +84,11 @@ func (h *ChatSettingsHandler) GetChatSettingsByChatID(c *fiber.Ctx) error {
 
 	settings, err := h.Service.GetByChatID(context.Background(), chatID)
 	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "not found"})
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Возвращаем 200 и пустой объект, если настроек для данного чата нет
+			return c.JSON(fiber.Map{})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	// Конвертируем в DTO

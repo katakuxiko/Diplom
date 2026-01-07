@@ -34,6 +34,11 @@ func (r *ChatRepository) List() ([]models.Chat, error) {
 }
 
 func (r *ChatRepository) Delete(id string) error {
+	// Сначала удаляем связанные настройки чата
+	if err := r.db.Where("chat_id = ?", id).Delete(&models.ChatSetting{}).Error; err != nil {
+		return err
+	}
+	// Затем удаляем сам чат
 	return r.db.Delete(&models.Chat{}, "id = ?", id).Error
 }
 

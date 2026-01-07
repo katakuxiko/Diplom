@@ -104,7 +104,8 @@ func (l *LLMClient) Ask(query, contextText string, settings *models.AskSettings)
 			"ОТВЕТ:",
 		contextText, query,
 	)
-
+	print(userPrompt)
+	print(systemPrompt)
 	resp, err := l.client.CreateChatCompletion(
 		context.Background(),
 		openai.ChatCompletionRequest{

@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/repository"
+	"github.com/katakuxiko/Diplom/internal/utils"
 	"github.com/pgvector/pgvector-go"
 )
 
@@ -46,9 +47,35 @@ func (s *RAGService) Ask(query string, topK int, chatID uuid.UUID, settings *mod
 		return "К сожалению, в загруженных документах не найдено релевантной информации по вашему запросу. Попробуйте переформулировать вопрос или загрузите дополнительные материалы.", nil, nil
 	}
 
+	// Build normalized, compact context with a character budget
+	// Heuristic: cap context to ~8000 chars (~2k tokens), enough for fast responses
+	contextBudget := 8000
+	if settings != nil && settings.MaxTokens > 0 {
+		// Leave room for answer; use ~1.5x of answer tokens as context chars (approx 4 chars per token)
+		budget := int(float32(settings.MaxTokens) * 1.5 * 4)
+		if budget > 0 && budget < 20000 { // clamp to avoid oversized prompts
+			contextBudget = budget
+		}
+	}
+
 	var b strings.Builder
+	used := 0
 	for i, ch := range filteredChunks {
-		b.WriteString(fmt.Sprintf("Фрагмент %d [%s]:\n%s\n\n", i+1, ch.ChunkName, ch.Text))
+		normalized := utils.NormalizeText(ch.Text)
+		header := fmt.Sprintf("Фрагмент %d: ", i+1)
+		piece := header + normalized + "\n"
+		if used+len(piece) > contextBudget {
+			remaining := contextBudget - used
+			if remaining <= 0 {
+				break
+			}
+			piece = utils.TruncateByChars(piece, remaining)
+		}
+		b.WriteString(piece)
+		used += len(piece)
+		if used >= contextBudget {
+			break
+		}
 	}
 	ctx := b.String()
 
