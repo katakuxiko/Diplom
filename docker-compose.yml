@@ -69,13 +69,13 @@ services:
       - SERVER_ADDR=:8080
       - EMBED_MODEL=text-embedding-nomic-embed-text-v1.5
       - LLM_MODEL=liquid/lfm2-1.2b
-      - LMSTUDIO_BASE_URL=http://localhost:1234/v1
+      - LMSTUDIO_BASE_URL=http://host.docker.internal:1234/v1
       - MINIO_ENDPOINT=minio:9000
       - MINIO_ACCESS_KEY=admin
       - MINIO_SECRET_KEY=password123
       - MINIO_BUCKET=documents
       - MINIO_USE_SSL=false
-      - JWT_SECRET=sadadasdasd
+      - JWT_SECRET=sadadasdasdL
     ports:
       - "8080:8080"
     depends_on:

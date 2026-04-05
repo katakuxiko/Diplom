@@ -92,6 +92,8 @@ type ChatUser struct {
 	Username     string `gorm:"not null"`
 	UserInfo     string
 	PasswordHash string        `gorm:"not null"`
+	AccessLevel  int           `gorm:"default:0" json:"access_level"`
+	RoleName     string        `json:"user_role"`
 	History      []ChatHistory `gorm:"foreignKey:UserID" swaggerignore:"true"`
 }
 
