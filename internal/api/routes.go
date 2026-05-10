@@ -11,7 +11,7 @@ import (
 
 func RegisterRoutes(app *fiber.App, cfg *config.Config, rag *service.RAGService, llm *service.LLMClient, chunkService *service.ChunkService, adminService *service.AdminService, chatService *service.ChatService, documentService *service.DocumentService, chatuserService *service.ChatUserService, chatSettingsService *service.ChatSettingsService) {
 
-	h := NewHandler(rag, llm, chunkService)
+	h := NewHandler(rag, llm, chunkService, chatSettingsService)
 	docH := handlers.NewDocumentHandler(documentService, chunkService, llm, cfg)
 	middleware.JwtSecret = []byte(cfg.JWTSecret)
 	handlers.RegisterAuthRoutes(app, adminService, cfg)

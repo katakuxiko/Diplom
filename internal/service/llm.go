@@ -45,6 +45,34 @@ func (l *LLMClient) Embedding(text string) ([]float32, error) {
 	return resp.Data[0].Embedding, nil
 }
 
+// clientForSettings возвращает openai.Client, учитывая настройки провайдера (локальный или внешний)
+func (l *LLMClient) clientForSettings(s *models.AskSettings) *openai.Client {
+	if s != nil && strings.ToLower(s.Provider) == "external" && s.ExternalAPIKey != "" {
+		cfg := openai.DefaultConfig(s.ExternalAPIKey)
+		if s.ExternalBaseURL != "" {
+			cfg.BaseURL = s.ExternalBaseURL
+		}
+		return openai.NewClientWithConfig(cfg)
+	}
+	return l.client
+}
+
+// EmbeddingWithSettings позволяет получать embedding, используя провайдера из настроек
+func (l *LLMClient) EmbeddingWithSettings(text string, s *models.AskSettings) ([]float32, error) {
+	client := l.clientForSettings(s)
+	resp, err := client.CreateEmbeddings(
+		context.Background(),
+		openai.EmbeddingRequest{
+			Model: openai.EmbeddingModel(l.embedName),
+			Input: []string{text},
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Data[0].Embedding, nil
+}
+
 // Ask выполняет RAG/LLM запрос с контекстом и настраиваемыми параметрами
 func (l *LLMClient) Ask(query, contextText string, settings *models.AskSettings) (string, error) {
 	// Проверка на приветствие
@@ -118,6 +146,89 @@ func (l *LLMClient) Ask(query, contextText string, settings *models.AskSettings)
 			TopP:            0.9, // Фокус на наиболее вероятных токенах
 			MaxTokens:       maxTokens,
 			PresencePenalty: 0.1, // Небольшое разнообразие
+		},
+	)
+	if err != nil {
+		return "", err
+	}
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("LLM вернул пустой ответ")
+	}
+	return strings.TrimSpace(resp.Choices[0].Message.Content), nil
+}
+
+// AskWithSettings выполняет запрос к модели с учётом per-chat провайдера (локальный или внешний)
+func (l *LLMClient) AskWithSettings(query, contextText string, settings *models.AskSettings) (string, error) {
+	// reuse Ask logic but with client from settings
+	// локальная логика формирования prompt совпадает с Ask(), поэтому дублируем небольшую часть
+	greetings := []string{
+		"привет", "привет!", "здравствуй", "здравствуйте",
+		"hi", "hello", "hey", "привета", "хай", "хелло",
+	}
+	lowerQuery := strings.ToLower(strings.TrimSpace(query))
+	for _, greeting := range greetings {
+		if lowerQuery == greeting {
+			return "Привет! 👋 Я помогу найти информацию в загруженных документах. Задайте ваш вопрос.", nil
+		}
+	}
+
+	if strings.TrimSpace(contextText) == "" {
+		return "К сожалению, в загруженных документах не найдено информации по вашему запросу. Попробуйте переформулировать вопрос или загрузите дополнительные материалы.", nil
+	}
+
+	modelName := l.chatName
+	temperature := float32(0.7)
+	maxTokens := 2000
+	systemPrompt := `Ты - профессиональный аналитик документов. Твоя задача - давать точные, структурированные ответы на основе предоставленных материалов.
+
+КРИТИЧЕСКИЕ ПРАВИЛА:
+1. Используй ТОЛЬКО информацию из КОНТЕКСТА ниже
+2. Не используй знания, полученные во время обучения
+3. Если информация неполная или неоднозначная - явно укажи это
+4. При отсутствии релевантной информации отвечай: "Информация по данному вопросу отсутствует в документах"
+
+ФОРМАТИРОВАНИЕ ОТВЕТА:
+- Структурируй ответ (используй списки, подзаголовки при необходимости)
+- Будь конкретным и информативным
+- Если в контексте есть несколько релевантных фрагментов - синтезируй целостный ответ
+- Избегай упоминаний о "контексте", "документах" или своей природе как ИИ
+- Отвечай прямо на вопрос, без лишних вступлений`
+
+	if settings != nil {
+		if settings.Model != "" {
+			modelName = settings.Model
+		}
+		if settings.SystemPrompt != "" {
+			systemPrompt = settings.SystemPrompt
+		}
+		if settings.MaxTokens > 0 {
+			maxTokens = settings.MaxTokens
+		}
+		if settings.Temperature > 0 {
+			temperature = settings.Temperature
+		}
+	}
+
+	userPrompt := fmt.Sprintf(
+		"КОНТЕКСТ:\n%s\n\n"+
+			"ВОПРОС: %s\n\n"+
+			"ОТВЕТ:",
+		contextText, query,
+	)
+
+	client := l.clientForSettings(settings)
+	resp, err := client.CreateChatCompletion(
+		context.Background(),
+		openai.ChatCompletionRequest{
+			Model: modelName,
+			Messages: []openai.ChatCompletionMessage{
+				{Role: "system", Content: systemPrompt},
+				{Role: "user", Content: userPrompt},
+			},
+			Temperature:     temperature,
+			TopP:            0.9,
+			MaxTokens:       maxTokens,
+			PresencePenalty: 0.1,
 		},
 	)
 	if err != nil {

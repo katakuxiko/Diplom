@@ -9,6 +9,7 @@ import (
 	"github.com/katakuxiko/Diplom/internal/dto"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/service"
+	"github.com/katakuxiko/Diplom/internal/utils"
 	"gorm.io/gorm"
 )
 
@@ -43,6 +44,18 @@ func (h *ChatSettingsHandler) CreateOrUpdateChatSettings(c *fiber.Ctx) error {
 		Descr:     req.Descr,
 		URL:       req.URL,
 		Settings:  req.Settings,
+	}
+
+	// Перед сохранением шифруем externalApiKey (если есть)
+	if settings.Settings != nil {
+		if v, ok := settings.Settings["externalApiKey"]; ok {
+			if s, ok2 := v.(string); ok2 && s != "" {
+				enc, err := utils.EncryptString(s)
+				if err == nil {
+					settings.Settings["externalApiKey"] = enc
+				}
+			}
+		}
 	}
 
 	// Вызываем сервис для создания или обновления
@@ -91,6 +104,17 @@ func (h *ChatSettingsHandler) GetChatSettingsByChatID(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	// Перед возвратом дешифруем externalApiKey если он зашифрован
+	if settings.Settings != nil {
+		if v, ok := settings.Settings["externalApiKey"]; ok {
+			if s, ok2 := v.(string); ok2 && s != "" {
+				if dec, err := utils.DecryptString(s); err == nil {
+					settings.Settings["externalApiKey"] = dec
+				}
+			}
+		}
+	}
+
 	// Конвертируем в DTO
 	response := &dto.ChatSettingResponse{
 		ID:          settings.ID,
@@ -125,6 +149,17 @@ func (h *ChatSettingsHandler) GetChatSettingsByID(c *fiber.Ctx) error {
 	settings, err := h.Service.GetByID(context.Background(), id)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "not found"})
+	}
+
+	// Дешифруем ключ если нужно
+	if settings.Settings != nil {
+		if v, ok := settings.Settings["externalApiKey"]; ok {
+			if s, ok2 := v.(string); ok2 && s != "" {
+				if dec, err := utils.DecryptString(s); err == nil {
+					settings.Settings["externalApiKey"] = dec
+				}
+			}
+		}
 	}
 
 	response := &dto.ChatSettingResponse{
@@ -177,6 +212,18 @@ func (h *ChatSettingsHandler) UpdateChatSettings(c *fiber.Ctx) error {
 	settings.Descr = req.Descr
 	settings.URL = req.URL
 	settings.Settings = req.Settings
+
+	// Шифруем ключ перед сохранением
+	if settings.Settings != nil {
+		if v, ok := settings.Settings["externalApiKey"]; ok {
+			if s, ok2 := v.(string); ok2 && s != "" {
+				enc, err := utils.EncryptString(s)
+				if err == nil {
+					settings.Settings["externalApiKey"] = enc
+				}
+			}
+		}
+	}
 
 	if err := h.Service.Update(context.Background(), settings); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
@@ -235,6 +282,16 @@ func (h *ChatSettingsHandler) ListChatSettings(c *fiber.Ctx) error {
 	// Конвертируем в DTO
 	response := make([]dto.ChatSettingResponse, len(settingsList))
 	for i, settings := range settingsList {
+		// дешифруем ключи
+		if settings.Settings != nil {
+			if v, ok := settings.Settings["externalApiKey"]; ok {
+				if s, ok2 := v.(string); ok2 && s != "" {
+					if dec, err := utils.DecryptString(s); err == nil {
+						settings.Settings["externalApiKey"] = dec
+					}
+				}
+			}
+		}
 		response[i] = dto.ChatSettingResponse{
 			ID:          settings.ID,
 			ChatID:      settings.ChatID,

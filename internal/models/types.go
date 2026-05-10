@@ -10,6 +10,10 @@ type AskSettings struct {
 	RequestsWindow int     `json:"requestsWindow"`
 	SystemPrompt   string  `json:"systemPrompt"`
 	Temperature    float32 `json:"temperature"`
+	// Provider settings
+	Provider        string `json:"provider,omitempty"`        // "local" or "external"
+	ExternalAPIKey  string `json:"externalApiKey,omitempty"`  // api key for external provider
+	ExternalBaseURL string `json:"externalBaseUrl,omitempty"` // base url for external OpenAI-compatible API
 }
 
 type AskRequest struct {

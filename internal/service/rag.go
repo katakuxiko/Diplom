@@ -28,7 +28,7 @@ func (s *RAGService) Ask(query string, topK int, chatID uuid.UUID, settings *mod
 		expandedTopK = 20
 	}
 
-	v, err := s.llm.Embedding(query)
+	v, err := s.llm.EmbeddingWithSettings(query, settings)
 	if err != nil {
 		return "", nil, fmt.Errorf("embedding error: %w", err)
 	}
@@ -80,7 +80,7 @@ func (s *RAGService) Ask(query string, topK int, chatID uuid.UUID, settings *mod
 	ctx := b.String()
 
 	startTime := time.Now()
-	answer, err := s.llm.Ask(query, ctx, settings)
+	answer, err := s.llm.AskWithSettings(query, ctx, settings)
 	fmt.Printf("⏱️  LLM response time: %v\n", time.Since(startTime))
 	if err != nil {
 		return "", nil, fmt.Errorf("llm error: %w", err)

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -19,11 +21,12 @@ type Handler struct {
 	rag          *service.RAGService
 	llm          *service.LLMClient
 	chunkService *service.ChunkService
+	chatSettings *service.ChatSettingsService
 }
 
 // NewHandler конструктор
-func NewHandler(rag *service.RAGService, llm *service.LLMClient, chunkService *service.ChunkService) *Handler {
-	return &Handler{rag: rag, llm: llm, chunkService: chunkService}
+func NewHandler(rag *service.RAGService, llm *service.LLMClient, chunkService *service.ChunkService, chatSettings *service.ChatSettingsService) *Handler {
+	return &Handler{rag: rag, llm: llm, chunkService: chunkService, chatSettings: chatSettings}
 }
 
 // Health — простая проверка
@@ -135,14 +138,47 @@ func (h *Handler) AskQuestion(c *fiber.Ctx) error {
 	if req.ChatID == uuid.Nil {
 		return c.Status(400).JSON(fiber.Map{"error": "chat_id is required"})
 	}
-
-	// Собираем настройки LLM
-	settings := req.Settings
-	if settings == nil {
-		settings = &models.AskSettings{}
+	// Собираем настройки LLM: сначала берём настройки из запроса, затем дополняем их настройками чата из БД
+	settings := &models.AskSettings{}
+	if req.Settings != nil {
+		// копируем поля из запроса
+		*settings = *req.Settings
 	}
+	// если модель в теле запроса не указана, используем параметр model из query
 	if settings.Model == "" && req.Model != "" {
 		settings.Model = req.Model
+	}
+	// Попробуем получить настройки чата из БД и слить их (db -> override by request)
+	if h.chatSettings != nil {
+		if cs, err := h.chatSettings.GetByChatID(context.Background(), req.ChatID); err == nil && cs != nil && cs.Settings != nil {
+			// marshal JSONB -> bytes
+			raw, _ := json.Marshal(cs.Settings)
+			var dbSettings models.AskSettings
+			if err := json.Unmarshal(raw, &dbSettings); err == nil {
+				// Применяем только те поля из dbSettings, которые не заданы в request (request имеет приоритет)
+				if settings.Provider == "" {
+					settings.Provider = dbSettings.Provider
+				}
+				if settings.ExternalAPIKey == "" {
+					settings.ExternalAPIKey = dbSettings.ExternalAPIKey
+				}
+				if settings.ExternalBaseURL == "" {
+					settings.ExternalBaseURL = dbSettings.ExternalBaseURL
+				}
+				if settings.Model == "" {
+					settings.Model = dbSettings.Model
+				}
+				if settings.SystemPrompt == "" {
+					settings.SystemPrompt = dbSettings.SystemPrompt
+				}
+				if settings.MaxTokens == 0 {
+					settings.MaxTokens = dbSettings.MaxTokens
+				}
+				if settings.Temperature == 0 {
+					settings.Temperature = dbSettings.Temperature
+				}
+			}
+		}
 	}
 
 	// если модель указана, используем её; иначе — дефолт внутри LLMClient/Service
