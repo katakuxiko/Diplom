@@ -16,6 +16,10 @@ RUN go mod download
 # Copy source code
 COPY . .
 
+# Install swag and generate swagger docs package so import `docs` exists
+RUN go install github.com/swaggo/swag/cmd/swag@latest
+RUN $(go env GOPATH)/bin/swag init -g main.go -o ./docs
+
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
 
@@ -23,7 +27,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
 FROM alpine:latest
 
 # Install ca-certificates for HTTPS requests
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk --no-cache add ca-certificates tzdata poppler-utils
 
 # Create app directory
 WORKDIR /root/

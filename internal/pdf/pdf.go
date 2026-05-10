@@ -10,6 +10,7 @@ import (
 
 func ExtractText(path string) (string, error) {
 	res, err := docconv.ConvertPath(path)
+	
 	if err != nil {
 		return "", err
 	}
