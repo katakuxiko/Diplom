@@ -50,6 +50,8 @@ func main() {
 	documentRepo := repository.NewDocumentRepository(db)
 	chatuserRepo := repository.NewChatUserRepository(db)
 	chatSettingsRepo := repository.NewChatSettingsRepository(db)
+	chatHistoryRepo := repository.NewChatHistoryRepository(db)
+	messageRepo := repository.NewMessageRepository(db)
 	// services
 	llm := service.NewLLMClient(cfg)
 	rag := service.NewRAGService(chunkRepo, llm)
@@ -91,7 +93,7 @@ func main() {
 	}))
 
 	app.Get("/swagger/*", swagger.WrapHandler)
-	api.RegisterRoutes(app, cfg, rag, llm, chunkService, adminService, chatService, documentService, chatUserService, chatSettingsService)
+	api.RegisterRoutes(app, cfg, rag, llm, chunkService, adminService, chatService, documentService, chatUserService, chatSettingsService, chatHistoryRepo, messageRepo)
 
 	log.Printf("🚀 Server started at %s", cfg.ServerAddr)
 	log.Fatal(app.Listen(cfg.ServerAddr))

@@ -21,7 +21,7 @@ func NewRAGService(ChunkRepository *repository.ChunkRepository, llm *LLMClient) 
 	return &RAGService{ChunkRepository: ChunkRepository, llm: llm}
 }
 
-func (s *RAGService) Ask(query string, topK int, chatID uuid.UUID, settings *models.AskSettings) (string, []models.Chunk, error) {
+func (s *RAGService) Ask(query string, topK int, chatID uuid.UUID, settings *models.AskSettings, accessLevel int) (string, []models.Chunk, error) {
 	// Получаем больше чанков для последующей фильтрации
 	expandedTopK := topK * 2
 	if expandedTopK > 20 {
@@ -34,7 +34,7 @@ func (s *RAGService) Ask(query string, topK int, chatID uuid.UUID, settings *mod
 	}
 	vec := pgvector.NewVector(v)
 
-	chunks, err := s.ChunkRepository.SearchByVector(vec, expandedTopK, chatID)
+	chunks, err := s.ChunkRepository.SearchByVector(vec, expandedTopK, chatID, accessLevel)
 	if err != nil {
 		return "", nil, fmt.Errorf("search error: %w", err)
 	}

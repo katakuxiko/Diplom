@@ -51,13 +51,13 @@ func (s *DocumentService) GetFile(id uuid.UUID) (*models.Document, error) {
 }
 
 // GetAllDocuments — список документов
-func (s *DocumentService) GetAllDocumentsPaginated(limit, page int, chatID uuid.UUID) (*dto.PaginatedDocuments, error) {
+func (s *DocumentService) GetAllDocumentsPaginated(limit, page int, chatID uuid.UUID, maxAccessLevel int) (*dto.PaginatedDocuments, error) {
 	if page < 1 {
 		page = 1
 	}
 	offset := (page - 1) * limit
 
-	docs, total, err := s.repo.GetAllPaginated(limit, offset, chatID)
+	docs, total, err := s.repo.GetAllPaginated(limit, offset, chatID, maxAccessLevel)
 	if err != nil {
 		return nil, err
 	}
@@ -94,4 +94,16 @@ func (s *DocumentService) DeleteDocument(id uuid.UUID) error {
 	}
 
 	return s.repo.Delete(id)
+}
+
+func (s *DocumentService) UpdateAccessLevel(id uuid.UUID, level int) (*models.Document, error) {
+	doc, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, err
+	}
+	doc.AccessLevel = level
+	if err := s.repo.Update(doc); err != nil {
+		return nil, err
+	}
+	return doc, nil
 }

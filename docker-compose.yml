@@ -75,7 +75,7 @@ services:
       - MINIO_SECRET_KEY=password123
       - MINIO_BUCKET=documents
       - MINIO_USE_SSL=false
-      - JWT_SECRET=sadadasdasd
+      - JWT_SECRET=sadadasdasdL
     ports:
       - "8080:8080"
     depends_on:

@@ -43,6 +43,34 @@ func (r *ChatUserRepository) Delete(id uuid.UUID) error {
 	return r.db.Delete(&models.ChatUser{}, "id = ?", id).Error
 }
 
+// DeleteCascade removes user along with their chat histories and messages to avoid FK violations.
+func (r *ChatUserRepository) DeleteCascade(id uuid.UUID) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var historyIDs []uuid.UUID
+		if err := tx.Model(&models.ChatHistory{}).
+			Where("user_id = ?", id).
+			Pluck("id", &historyIDs).Error; err != nil {
+			return err
+		}
+
+		if len(historyIDs) > 0 {
+			if err := tx.Where("chat_history_id IN ?", historyIDs).
+				Delete(&models.Message{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("id IN ?", historyIDs).
+				Delete(&models.ChatHistory{}).Error; err != nil {
+				return err
+			}
+		}
+
+		if err := tx.Delete(&models.ChatUser{}, "id = ?", id).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
 func (r *ChatUserRepository) GetByUsername(username string) (*models.ChatUser, error) {
 	var chatuser models.ChatUser
 	if err := r.db.Where("username = ?", username).First(&chatuser).Error; err != nil {
@@ -53,4 +81,15 @@ func (r *ChatUserRepository) GetByUsername(username string) (*models.ChatUser, e
 	}
 	return &chatuser, nil
 }
- 
+
+func (r *ChatUserRepository) GetByUsernameAndChat(chatID uuid.UUID, username string) (*models.ChatUser, error) {
+	var chatuser models.ChatUser
+	err := r.db.Where("chat_id = ? AND username = ?", chatID, username).First(&chatuser).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &chatuser, nil
+}

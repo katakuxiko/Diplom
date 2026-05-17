@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/config"
 	"github.com/katakuxiko/Diplom/internal/middleware"
@@ -24,6 +25,7 @@ func RegisterDocumentRoutes(app *fiber.App, svc *service.DocumentService, cfgo *
 	r.Get("/", GetDocuments)
 	r.Get("/:id", GetDocumentByID)
 	r.Delete("/:id", DeleteDocument)
+	r.Put("/:id/access", UpdateDocumentAccess)
 
 	// Публичный эндпоинт для скачивания (без JWT)
 	app.Get("/documents/:id/download", DownloadDocument)
@@ -89,8 +91,16 @@ func GetDocuments(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid chat_id"})
 	}
+	maxAccess := -1
+	if claims, ok := c.Locals("user").(jwt.MapClaims); ok {
+		if role, rok := claims["role"].(string); rok && role == "chat_user" {
+			if al, ok := claims["access_level"].(float64); ok {
+				maxAccess = int(al)
+			}
+		}
+	}
 
-	paginatedDocs, err := documentService.GetAllDocumentsPaginated(limit, page, chatID)
+	paginatedDocs, err := documentService.GetAllDocumentsPaginated(limit, page, chatID, maxAccess)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -195,4 +205,35 @@ func DeleteDocument(c *fiber.Ctx) error {
 	}
 
 	return c.SendStatus(204)
+}
+
+// UpdateDocumentAccess godoc
+// @Summary      Обновить уровень доступа документа
+// @Description  Меняет поле access_level для документа
+// @Tags         documents
+// @Param        id    path   string true "Document ID"
+// @Param        body  body   map[string]int true "{\"access_level\":1}"
+// @Success      200   {object} dto.DocumentResponseDTO
+// @Failure      400   {object} map[string]string
+// @Failure      500   {object} map[string]string
+// @Router       /documents/{id}/access [put]
+// @Security     BearerAuth
+func UpdateDocumentAccess(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid id"})
+	}
+	var payload struct {
+		AccessLevel int `json:"access_level"`
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+	}
+
+	doc, err := documentService.UpdateAccessLevel(id, payload.AccessLevel)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(doc)
 }

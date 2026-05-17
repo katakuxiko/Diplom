@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"bytes"
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/dto"
-	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/service"
+	"github.com/katakuxiko/Diplom/internal/utils"
 )
 
 var ChatUserService *service.ChatUserService
@@ -27,7 +29,7 @@ func RegisterChatUserRoutes(app *fiber.App, svc *service.ChatUserService) {
 }
 
 // GetChatUsers godoc
-// @Summary		Получить всех пользователей чата 
+// @Summary		Получить всех пользователей чата
 // @Description	Возвращает список пользователей чата
 // @Tags			chatusers
 // @Produce		json
@@ -81,10 +83,19 @@ func CreateChatUser(c *fiber.Ctx) error {
 	if err := c.BodyParser(&chatuser); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 	}
-	if _, err := ChatUserService.Create(&chatuser); err != nil {
+	created, err := ChatUserService.Create(&chatuser)
+	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.Status(201).JSON(chatuser)
+	resp := dto.ChatUserResponse{
+		ID:          created.ID,
+		ChatID:      created.ChatID,
+		Username:    created.Username,
+		User_Role:   chatuser.User_Role,
+		User_Info:   chatuser.User_Info,
+		AccessLevel: chatuser.AccessLevel,
+	}
+	return c.Status(201).JSON(resp)
 }
 
 // Updatechatuser godoc
@@ -104,15 +115,41 @@ func UpdateChatUser(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid id"})
 	}
-	var chatuser models.ChatUser
-	if err := c.BodyParser(&chatuser); err != nil {
+
+	existing, err := ChatUserService.GetByID(id)
+	if err != nil || existing == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "chatuser not found"})
+	}
+
+	var payload dto.ChatUserCreateRequest
+	if err := c.BodyParser(&payload); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 	}
-	chatuser.ID = id
-	if err := ChatUserService.Update(&chatuser); err != nil {
+
+	// preserve chat_id if not provided
+	if payload.ChatID != "" {
+		if parsed, err := uuid.Parse(payload.ChatID); err == nil {
+			existing.ChatID = parsed
+		}
+	}
+
+	existing.Username = payload.Username
+	existing.UserInfo = payload.User_Info
+	existing.RoleName = payload.User_Role
+	existing.AccessLevel = payload.AccessLevel
+
+	if payload.Password != "" {
+		hash, err := utils.HashPassword(payload.Password)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "failed to hash password"})
+		}
+		existing.PasswordHash = hash
+	}
+
+	if err := ChatUserService.Update(existing); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(chatuser)
+	return c.JSON(existing)
 }
 
 // DeleteChatUser godoc
@@ -136,12 +173,12 @@ func DeleteChatUser(c *fiber.Ctx) error {
 }
 
 // ImportChatUsers godoc
-// @Summary      Импорт пользователей из Excel
-// @Description  Загружает Excel-файл (.xlsx) и добавляет пользователей в базу
+// @Summary      Импорт пользователей из Excel/CSV
+// @Description  Загружает файл (.xlsx или .csv) и добавляет пользователей в базу. Колонки: username,password,role,chat_id
 // @Tags         chatusers
 // @Accept       multipart/form-data
 // @Produce      json
-// @Param        file  formData  file  true  "Excel файл (.xlsx)"
+// @Param        file  formData  file  true  "Файл (.xlsx или .csv)"
 // @Success      200   {object}  map[string]string
 // @Failure      400   {object}  map[string]string
 // @Failure      500   {object}  map[string]string
@@ -164,8 +201,16 @@ func ImportChatUsers(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "ошибка чтения файла"})
 	}
 
-	if err := ChatUserService.ImportFromExcel(buf.Bytes()); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	// Определяем тип по расширению
+	name := file.Filename
+	var importErr error
+	if strings.HasSuffix(strings.ToLower(name), ".csv") {
+		importErr = ChatUserService.ImportFromCSV(buf.Bytes())
+	} else {
+		importErr = ChatUserService.ImportFromExcel(buf.Bytes())
+	}
+	if importErr != nil {
+		return c.Status(500).JSON(fiber.Map{"error": importErr.Error()})
 	}
 
 	return c.JSON(fiber.Map{"message": "Пользователи успешно импортированы"})
