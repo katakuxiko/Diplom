@@ -5,8 +5,10 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/dto"
+	"github.com/katakuxiko/Diplom/internal/middleware"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/service"
 	"github.com/katakuxiko/Diplom/internal/utils"
@@ -15,6 +17,101 @@ import (
 
 type ChatSettingsHandler struct {
 	Service *service.ChatSettingsService // Сервис для работы с настройками чата
+}
+
+// sanitizeSettings возвращает копию settings без полей с секретами,
+// но с флагами наличия ключей: externalApiKeySet, embedExternalApiKeySet.
+// sanitizeSettings возвращает копию settings без полей с секретами,
+// но с флагами наличия ключей: externalApiKeySet, embedExternalApiKeySet.
+// Если запрос содержит JWT с ролью superuser — возвращаем полные (дешифрованные) ключи.
+func sanitizeSettings(c *fiber.Ctx, s models.JSONB) models.JSONB {
+	// пустые настройки
+	if s == nil {
+		return models.JSONB{
+			"externalApiKeySet":      false,
+			"embedExternalApiKeySet": false,
+		}
+	}
+
+	// определим, является ли запрос админским
+	isAdmin := false
+	if c != nil {
+		// сначала проверим, положил ли middleware.JWTProtected() claims в Locals
+		if v := c.Locals("user"); v != nil {
+			if claims, ok := v.(jwt.MapClaims); ok {
+				if r, ok2 := claims["role"].(string); ok2 && r == "superuser" {
+					isAdmin = true
+				}
+			}
+		} else {
+			// если middleware не сработал (эндпоинт публичный), попробуем распарсить токен из заголовка
+			tokenStr := c.Get("Authorization")
+			if tokenStr != "" {
+				if len(tokenStr) > 7 && tokenStr[:7] == "Bearer " {
+					tokenStr = tokenStr[7:]
+				}
+				if tok, err := jwt.ParseWithClaims(tokenStr, jwt.MapClaims{}, func(t *jwt.Token) (interface{}, error) {
+					if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+						return nil, fiber.ErrUnauthorized
+					}
+					return middleware.JwtSecret, nil
+				}); err == nil && tok != nil && tok.Valid {
+					if claims, ok := tok.Claims.(jwt.MapClaims); ok {
+						if r, ok2 := claims["role"].(string); ok2 && r == "superuser" {
+							isAdmin = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if isAdmin {
+		// вернуть полные настройки, попытаемся дешифровать ключи
+		out := make(models.JSONB)
+		for k, v := range s {
+			out[k] = v
+		}
+		if v, ok := out["externalApiKey"].(string); ok && v != "" {
+			if dec, derr := utils.DecryptString(v); derr == nil {
+				out["externalApiKey"] = dec
+			}
+		}
+		if v2, ok := out["embedExternalApiKey"].(string); ok && v2 != "" {
+			if dec2, derr2 := utils.DecryptString(v2); derr2 == nil {
+				out["embedExternalApiKey"] = dec2
+			}
+		}
+		return out
+	}
+
+	// не админ — скрываем секреты и выставляем флаги наличия
+	out := make(models.JSONB)
+	for k, v := range s {
+		if k == "externalApiKey" || k == "embedExternalApiKey" {
+			continue
+		}
+		out[k] = v
+	}
+	if v, ok := s["externalApiKey"]; ok {
+		if str, ok2 := v.(string); ok2 && str != "" {
+			out["externalApiKeySet"] = true
+		} else {
+			out["externalApiKeySet"] = false
+		}
+	} else {
+		out["externalApiKeySet"] = false
+	}
+	if v2, ok := s["embedExternalApiKey"]; ok {
+		if str2, ok2 := v2.(string); ok2 && str2 != "" {
+			out["embedExternalApiKeySet"] = true
+		} else {
+			out["embedExternalApiKeySet"] = false
+		}
+	} else {
+		out["embedExternalApiKeySet"] = false
+	}
+	return out
 }
 
 // CreateOrUpdateChatSettings godoc
@@ -36,17 +133,41 @@ func (h *ChatSettingsHandler) CreateOrUpdateChatSettings(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request: " + err.Error()})
 	}
 
-	// Создаем модель из DTO
-	settings := &models.ChatSetting{
-		ChatID:    req.ChatID,
-		HelloText: req.HelloText,
-		Name:      req.Name,
-		Descr:     req.Descr,
-		URL:       req.URL,
-		Settings:  req.Settings,
+	// Попробуем получить существующие настройки, чтобы безопасно замерджить поля
+	var settings *models.ChatSetting
+	existing, err := h.Service.GetByChatID(context.Background(), req.ChatID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// создаём новые
+			settings = &models.ChatSetting{
+				ChatID:    req.ChatID,
+				HelloText: req.HelloText,
+				Name:      req.Name,
+				Descr:     req.Descr,
+				URL:       req.URL,
+				Settings:  req.Settings,
+			}
+		} else {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		}
+	} else {
+		// обновляем существующие поля и мерджим Settings
+		settings = existing
+		settings.HelloText = req.HelloText
+		settings.Name = req.Name
+		settings.Descr = req.Descr
+		settings.URL = req.URL
+		if settings.Settings == nil {
+			settings.Settings = make(models.JSONB)
+		}
+		if req.Settings != nil {
+			for k, v := range req.Settings {
+				settings.Settings[k] = v
+			}
+		}
 	}
 
-	// Перед сохранением шифруем externalApiKey (если есть)
+	// Перед сохранением шифруем внешние ключи, если они были переданы
 	if settings.Settings != nil {
 		if v, ok := settings.Settings["externalApiKey"]; ok {
 			if s, ok2 := v.(string); ok2 && s != "" {
@@ -56,9 +177,8 @@ func (h *ChatSettingsHandler) CreateOrUpdateChatSettings(c *fiber.Ctx) error {
 				}
 			}
 		}
-		// шифруем ключ для embedding провайдера, если указан
 		if v2, ok := settings.Settings["embedExternalApiKey"]; ok {
-			if s2, ok22 := v2.(string); ok22 && s2 != "" {
+			if s2, ok2 := v2.(string); ok2 && s2 != "" {
 				enc2, err := utils.EncryptString(s2)
 				if err == nil {
 					settings.Settings["embedExternalApiKey"] = enc2
@@ -81,7 +201,7 @@ func (h *ChatSettingsHandler) CreateOrUpdateChatSettings(c *fiber.Ctx) error {
 		Descr:       settings.Descr,
 		URL:         settings.URL,
 		CreatedDate: settings.CreatedDate.Format("2006-01-02T15:04:05Z07:00"),
-		Settings:    settings.Settings,
+		Settings:    sanitizeSettings(c, settings.Settings),
 	}
 
 	return c.Status(fiber.StatusOK).JSON(response)
@@ -113,26 +233,7 @@ func (h *ChatSettingsHandler) GetChatSettingsByChatID(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	// Перед возвратом дешифруем externalApiKey если он зашифрован
-	if settings.Settings != nil {
-		if v, ok := settings.Settings["externalApiKey"]; ok {
-			if s, ok2 := v.(string); ok2 && s != "" {
-				if dec, err := utils.DecryptString(s); err == nil {
-					settings.Settings["externalApiKey"] = dec
-				}
-			}
-		}
-		// дешифруем ключ embed-провайдера
-		if v2, ok := settings.Settings["embedExternalApiKey"]; ok {
-			if s2, ok2 := v2.(string); ok2 && s2 != "" {
-				if dec2, err := utils.DecryptString(s2); err == nil {
-					settings.Settings["embedExternalApiKey"] = dec2
-				}
-			}
-		}
-	}
-
-	// Конвертируем в DTO
+	// Не возвращаем реальные API-ключи клиенту — отдаем sanitized settings
 	response := &dto.ChatSettingResponse{
 		ID:          settings.ID,
 		ChatID:      settings.ChatID,
@@ -141,7 +242,7 @@ func (h *ChatSettingsHandler) GetChatSettingsByChatID(c *fiber.Ctx) error {
 		Descr:       settings.Descr,
 		URL:         settings.URL,
 		CreatedDate: settings.CreatedDate.Format("2006-01-02T15:04:05Z07:00"),
-		Settings:    settings.Settings,
+		Settings:    sanitizeSettings(c, settings.Settings),
 	}
 
 	return c.JSON(response)
@@ -168,24 +269,7 @@ func (h *ChatSettingsHandler) GetChatSettingsByID(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "not found"})
 	}
 
-	// Дешифруем ключ если нужно
-	if settings.Settings != nil {
-		if v, ok := settings.Settings["externalApiKey"]; ok {
-			if s, ok2 := v.(string); ok2 && s != "" {
-				if dec, err := utils.DecryptString(s); err == nil {
-					settings.Settings["externalApiKey"] = dec
-				}
-			}
-		}
-		if v2, ok := settings.Settings["embedExternalApiKey"]; ok {
-			if s2, ok2 := v2.(string); ok2 && s2 != "" {
-				if dec2, err := utils.DecryptString(s2); err == nil {
-					settings.Settings["embedExternalApiKey"] = dec2
-				}
-			}
-		}
-	}
-
+	// Не возвращаем реальные API-ключи клиенту — отдаем sanitized settings
 	response := &dto.ChatSettingResponse{
 		ID:          settings.ID,
 		ChatID:      settings.ChatID,
@@ -194,7 +278,7 @@ func (h *ChatSettingsHandler) GetChatSettingsByID(c *fiber.Ctx) error {
 		Descr:       settings.Descr,
 		URL:         settings.URL,
 		CreatedDate: settings.CreatedDate.Format("2006-01-02T15:04:05Z07:00"),
-		Settings:    settings.Settings,
+		Settings:    sanitizeSettings(c, settings.Settings),
 	}
 
 	return c.JSON(response)
@@ -235,7 +319,15 @@ func (h *ChatSettingsHandler) UpdateChatSettings(c *fiber.Ctx) error {
 	settings.Name = req.Name
 	settings.Descr = req.Descr
 	settings.URL = req.URL
-	settings.Settings = req.Settings
+	// Мерджим Settings, не затирая существующие ключи
+	if settings.Settings == nil {
+		settings.Settings = make(models.JSONB)
+	}
+	if req.Settings != nil {
+		for k, v := range req.Settings {
+			settings.Settings[k] = v
+		}
+	}
 
 	// Шифруем ключ перед сохранением
 	if settings.Settings != nil {
@@ -269,7 +361,7 @@ func (h *ChatSettingsHandler) UpdateChatSettings(c *fiber.Ctx) error {
 		Descr:       settings.Descr,
 		URL:         settings.URL,
 		CreatedDate: settings.CreatedDate.Format("2006-01-02T15:04:05Z07:00"),
-		Settings:    settings.Settings,
+ 		Settings:    sanitizeSettings(c, settings.Settings),
 	}
 
 	return c.JSON(response)
@@ -314,23 +406,6 @@ func (h *ChatSettingsHandler) ListChatSettings(c *fiber.Ctx) error {
 	// Конвертируем в DTO
 	response := make([]dto.ChatSettingResponse, len(settingsList))
 	for i, settings := range settingsList {
-		// дешифруем ключи
-		if settings.Settings != nil {
-			if v, ok := settings.Settings["externalApiKey"]; ok {
-				if s, ok2 := v.(string); ok2 && s != "" {
-					if dec, err := utils.DecryptString(s); err == nil {
-						settings.Settings["externalApiKey"] = dec
-					}
-				}
-			}
-			if v2, ok := settings.Settings["embedExternalApiKey"]; ok {
-				if s2, ok2 := v2.(string); ok2 && s2 != "" {
-					if dec2, err := utils.DecryptString(s2); err == nil {
-						settings.Settings["embedExternalApiKey"] = dec2
-					}
-				}
-			}
-		}
 		response[i] = dto.ChatSettingResponse{
 			ID:          settings.ID,
 			ChatID:      settings.ChatID,
@@ -339,7 +414,7 @@ func (h *ChatSettingsHandler) ListChatSettings(c *fiber.Ctx) error {
 			Descr:       settings.Descr,
 			URL:         settings.URL,
 			CreatedDate: settings.CreatedDate.Format("2006-01-02T15:04:05Z07:00"),
-			Settings:    settings.Settings,
+			Settings:    sanitizeSettings(c, settings.Settings),
 		}
 	}
 

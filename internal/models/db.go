@@ -102,8 +102,8 @@ type ChatHistory struct {
 	ID       uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
 	ChatID   uuid.UUID `gorm:"type:uuid;not null"`
 	Chat     Chat
-	UserID   uuid.UUID `gorm:"type:uuid;not null"`
-	User     ChatUser
+	UserID   *uuid.UUID `gorm:"type:uuid"`
+	User     *ChatUser
 	Messages []Message `gorm:"foreignKey:ChatHistoryID" swaggerignore:"true"`
 }
 

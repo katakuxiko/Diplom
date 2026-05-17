@@ -24,14 +24,18 @@ func RegisterRoutes(app *fiber.App, cfg *config.Config, rag *service.RAGService,
 	chatSettingsHandler := &handlers.ChatSettingsHandler{Service: chatSettingsService}
 	routes.RegisterChatSettingsRoutes(app, chatSettingsHandler)
 
-	// Защищенные эндпоинты
-	newApp := app.Group("", middleware.JWTProtected())
-	newApp.Post("/ask", h.AskQuestion)
-	newApp.Post("/documents/upload", docH.UploadAndIngestPDF)
-	newApp.Get("/health", h.Health)
-	newApp.Get("/models", h.ListModels)
-	newApp.Post("/ingest", h.IngestPDF)
-	newApp.Get("/chats/:chat_id/history", h.GetChatHistoryForAdmin)
-	newApp.Post("/chat_histories", h.CreateChatHistory)
-	newApp.Post("/messages", h.CreateMessage)
+    // Публичные эндпоинты (анонимный доступ) — создание истории, отправка сообщений и запрос к RAG
+    app.Post("/ask", h.AskQuestion)
+    app.Post("/chat_histories", h.CreateChatHistory)
+    app.Post("/messages", h.CreateMessage)
+
+	// Публичный просмотр истории чатов (доступен без JWT)
+	app.Get("/chats/:chat_id/history", h.GetChatHistoryForAdmin)
+
+    // Защищенные (только с JWT) эндпоинты
+    newApp := app.Group("", middleware.JWTProtected())
+    newApp.Post("/documents/upload", docH.UploadAndIngestPDF)
+    newApp.Get("/health", h.Health)
+    newApp.Get("/models", h.ListModels)
+    newApp.Post("/ingest", h.IngestPDF)
 }

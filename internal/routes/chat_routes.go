@@ -11,11 +11,11 @@ var chatService *service.ChatService
 
 func RegisterChatRoutes(app *fiber.App, svc *service.ChatService) {
 	chatService = svc
-	r := app.Group("/chats", middleware.JWTProtected())
+	r := app.Group("/chats")
 
-	r.Get("/", handlers.ListChats(chatService))
-	r.Get("/:id", handlers.GetChat(chatService))
-	r.Post("/", handlers.CreateChat(chatService))
-	r.Delete("/:id", handlers.DeleteChat(chatService))
-	r.Put("/:id", handlers.UpdateChat(chatService))
+	r.Get("/", middleware.JWTProtected(), handlers.ListChats(chatService))
+	r.Get("/:id", middleware.JWTProtected(), handlers.GetChat(chatService))
+	r.Post("/", middleware.JWTProtected(), handlers.CreateChat(chatService))
+	r.Delete("/:id", middleware.JWTProtected(), handlers.DeleteChat(chatService))
+	r.Put("/:id", middleware.JWTProtected(), handlers.UpdateChat(chatService))
 }

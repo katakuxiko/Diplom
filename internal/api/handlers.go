@@ -181,25 +181,24 @@ func (h *Handler) AskQuestion(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "chat_id is required"})
 	}
 
-	claims, ok := c.Locals("user").(jwt.MapClaims)
-	if !ok {
-		return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
-	}
-
+	// Попробуем получить claims из контекста; если их нет — разрешаем анонимный доступ с accessLevel=0
 	accessLevel := 0
-	if al, ok := claims["access_level"].(float64); ok {
-		accessLevel = int(al)
-	}
-
-	if role, ok := claims["role"].(string); ok {
-		if role == "superuser" {
-			accessLevel = 100
-		}
-		if role == "chat_user" {
-			if chatStr, ok := claims["chat_id"].(string); ok && chatStr != "" {
-				if claimChat, err := uuid.Parse(chatStr); err == nil {
-					if claimChat != req.ChatID {
-						return c.Status(403).JSON(fiber.Map{"error": "chat mismatch"})
+	if v := c.Locals("user"); v != nil {
+		if claims, ok := v.(jwt.MapClaims); ok {
+			if al, ok := claims["access_level"].(float64); ok {
+				accessLevel = int(al)
+			}
+			if role, ok := claims["role"].(string); ok {
+				if role == "superuser" {
+					accessLevel = 100
+				}
+				if role == "chat_user" {
+					if chatStr, ok := claims["chat_id"].(string); ok && chatStr != "" {
+						if claimChat, err := uuid.Parse(chatStr); err == nil {
+							if claimChat != req.ChatID {
+								return c.Status(403).JSON(fiber.Map{"error": "chat mismatch"})
+							}
+						}
 					}
 				}
 			}
@@ -318,11 +317,20 @@ func (h *Handler) GetChatHistoryForAdmin(c *fiber.Ctx) error {
 			})
 		}
 
+		var userID *uuid.UUID
+		var username string
+		if hst.UserID != nil {
+			userID = hst.UserID
+		}
+		if hst.User != nil {
+			username = hst.User.Username
+		}
+
 		response = append(response, dto.ChatHistoryWithMessagesResponse{
 			ID:       hst.ID,
 			ChatID:   hst.ChatID,
-			UserID:   hst.UserID,
-			Username: hst.User.Username,
+			UserID:   userID,
+			Username: username,
 			Messages: messages,
 		})
 	}
@@ -354,9 +362,16 @@ func (h *Handler) CreateChatHistory(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid chat_id"})
 	}
-	userID, err := uuid.Parse(req.UserID)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid user_id"})
+	var userID *uuid.UUID
+	if req.UserID != "" {
+		uid, err := uuid.Parse(req.UserID)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid user_id"})
+		}
+		userID = &uid
+	} else {
+		// anonymous user: keep userID nil
+		userID = nil
 	}
 	history := models.ChatHistory{ChatID: chatID, UserID: userID}
 	if err := h.chatHistoryRepo.Create(&history); err != nil {

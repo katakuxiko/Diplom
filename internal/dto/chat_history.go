@@ -17,7 +17,7 @@ type MessageResponse struct {
 type ChatHistoryWithMessagesResponse struct {
 	ID       uuid.UUID         `json:"id"`
 	ChatID   uuid.UUID         `json:"chat_id"`
-	UserID   uuid.UUID         `json:"user_id"`
+	UserID   *uuid.UUID        `json:"user_id"`
 	Username string            `json:"username"`
 	Messages []MessageResponse `json:"messages"`
 }
