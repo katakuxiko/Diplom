@@ -6,6 +6,11 @@ type AskSettings struct {
 	EnableHistory  bool    `json:"enableHistory"`
 	MaxTokens      int     `json:"maxTokens"`
 	Model          string  `json:"model"`
+	EmbedModel     string  `json:"embedModel,omitempty"`
+	// Embedding provider specific settings
+	EmbedProvider        string `json:"embedProvider,omitempty"`
+	EmbedExternalAPIKey  string `json:"embedExternalApiKey,omitempty"`
+	EmbedExternalBaseURL string `json:"embedExternalBaseUrl,omitempty"`
 	RequestsLimit  int     `json:"requestsLimit"`
 	RequestsWindow int     `json:"requestsWindow"`
 	SystemPrompt   string  `json:"systemPrompt"`

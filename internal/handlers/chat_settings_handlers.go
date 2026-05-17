@@ -56,6 +56,15 @@ func (h *ChatSettingsHandler) CreateOrUpdateChatSettings(c *fiber.Ctx) error {
 				}
 			}
 		}
+		// шифруем ключ для embedding провайдера, если указан
+		if v2, ok := settings.Settings["embedExternalApiKey"]; ok {
+			if s2, ok22 := v2.(string); ok22 && s2 != "" {
+				enc2, err := utils.EncryptString(s2)
+				if err == nil {
+					settings.Settings["embedExternalApiKey"] = enc2
+				}
+			}
+		}
 	}
 
 	// Вызываем сервис для создания или обновления
@@ -113,6 +122,14 @@ func (h *ChatSettingsHandler) GetChatSettingsByChatID(c *fiber.Ctx) error {
 				}
 			}
 		}
+		// дешифруем ключ embed-провайдера
+		if v2, ok := settings.Settings["embedExternalApiKey"]; ok {
+			if s2, ok2 := v2.(string); ok2 && s2 != "" {
+				if dec2, err := utils.DecryptString(s2); err == nil {
+					settings.Settings["embedExternalApiKey"] = dec2
+				}
+			}
+		}
 	}
 
 	// Конвертируем в DTO
@@ -157,6 +174,13 @@ func (h *ChatSettingsHandler) GetChatSettingsByID(c *fiber.Ctx) error {
 			if s, ok2 := v.(string); ok2 && s != "" {
 				if dec, err := utils.DecryptString(s); err == nil {
 					settings.Settings["externalApiKey"] = dec
+				}
+			}
+		}
+		if v2, ok := settings.Settings["embedExternalApiKey"]; ok {
+			if s2, ok2 := v2.(string); ok2 && s2 != "" {
+				if dec2, err := utils.DecryptString(s2); err == nil {
+					settings.Settings["embedExternalApiKey"] = dec2
 				}
 			}
 		}
@@ -220,6 +244,14 @@ func (h *ChatSettingsHandler) UpdateChatSettings(c *fiber.Ctx) error {
 				enc, err := utils.EncryptString(s)
 				if err == nil {
 					settings.Settings["externalApiKey"] = enc
+				}
+			}
+		}
+		if v2, ok := settings.Settings["embedExternalApiKey"]; ok {
+			if s2, ok2 := v2.(string); ok2 && s2 != "" {
+				enc2, err := utils.EncryptString(s2)
+				if err == nil {
+					settings.Settings["embedExternalApiKey"] = enc2
 				}
 			}
 		}
@@ -288,6 +320,13 @@ func (h *ChatSettingsHandler) ListChatSettings(c *fiber.Ctx) error {
 				if s, ok2 := v.(string); ok2 && s != "" {
 					if dec, err := utils.DecryptString(s); err == nil {
 						settings.Settings["externalApiKey"] = dec
+					}
+				}
+			}
+			if v2, ok := settings.Settings["embedExternalApiKey"]; ok {
+				if s2, ok2 := v2.(string); ok2 && s2 != "" {
+					if dec2, err := utils.DecryptString(s2); err == nil {
+						settings.Settings["embedExternalApiKey"] = dec2
 					}
 				}
 			}

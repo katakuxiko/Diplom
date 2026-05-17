@@ -5,7 +5,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
-	_ "github.com/katakuxiko/Diplom/docs"
 	"github.com/katakuxiko/Diplom/internal/api"
 	"github.com/katakuxiko/Diplom/internal/config"
 	"github.com/katakuxiko/Diplom/internal/dto"

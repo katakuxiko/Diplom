@@ -86,11 +86,48 @@ func (h *Handler) IngestPDF(c *fiber.Ctx) error {
 
 	docName := filepath.Base(savePath)
 	saved := 0
+	// Попробуем получить chat_id из формы (опционально) и загрузить per-chat настройки
+	chatIDStr := c.FormValue("chat_id")
+	var chatID uuid.UUID
+	if chatIDStr != "" {
+		if cid, err := uuid.Parse(chatIDStr); err == nil {
+			chatID = cid
+		}
+	}
+
 	for i, p := range parts {
 		chunk_name := fmt.Sprintf("%s_chunk_%d", docName, i)
 		ch := models.Chunk{Text: p, Filepath: savePath, DocName: chunk_name, ChunkName: chunk_name}
 
-		emb, err := h.llm.Embedding(p)
+		var emb []float32
+		var err error
+		if chatID != uuid.Nil && h.chatSettings != nil {
+			if cs, serr := h.chatSettings.GetByChatID(context.Background(), chatID); serr == nil && cs != nil && cs.Settings != nil {
+				raw, _ := json.Marshal(cs.Settings)
+				var dbSettings models.AskSettings
+				if jerr := json.Unmarshal(raw, &dbSettings); jerr == nil {
+					// Попробуем дешифровать ключи, если они были сохранены зашифрованными
+					if dbSettings.ExternalAPIKey != "" {
+						if dec, derr := utils.DecryptString(dbSettings.ExternalAPIKey); derr == nil {
+							dbSettings.ExternalAPIKey = dec
+						}
+					}
+					if dbSettings.EmbedExternalAPIKey != "" {
+						if dec2, derr2 := utils.DecryptString(dbSettings.EmbedExternalAPIKey); derr2 == nil {
+							dbSettings.EmbedExternalAPIKey = dec2
+						}
+					}
+					emb, err = h.llm.EmbeddingWithSettings(p, &dbSettings)
+				} else {
+					emb, err = h.llm.Embedding(p)
+				}
+			} else {
+				emb, err = h.llm.Embedding(p)
+			}
+		} else {
+			emb, err = h.llm.Embedding(p)
+		}
+
 		if err != nil {
 			log.Printf("embedding error (%s): %v", chunk_name, err)
 			continue
@@ -154,7 +191,18 @@ func (h *Handler) AskQuestion(c *fiber.Ctx) error {
 			// marshal JSONB -> bytes
 			raw, _ := json.Marshal(cs.Settings)
 			var dbSettings models.AskSettings
-			if err := json.Unmarshal(raw, &dbSettings); err == nil {
+				if err := json.Unmarshal(raw, &dbSettings); err == nil {
+					// Попробуем дешифровать ключи, если они были сохранены зашифрованными
+					if dbSettings.ExternalAPIKey != "" {
+						if dec, derr := utils.DecryptString(dbSettings.ExternalAPIKey); derr == nil {
+							dbSettings.ExternalAPIKey = dec
+						}
+					}
+					if dbSettings.EmbedExternalAPIKey != "" {
+						if dec2, derr2 := utils.DecryptString(dbSettings.EmbedExternalAPIKey); derr2 == nil {
+							dbSettings.EmbedExternalAPIKey = dec2
+						}
+					}
 				// Применяем только те поля из dbSettings, которые не заданы в request (request имеет приоритет)
 				if settings.Provider == "" {
 					settings.Provider = dbSettings.Provider
@@ -165,8 +213,20 @@ func (h *Handler) AskQuestion(c *fiber.Ctx) error {
 				if settings.ExternalBaseURL == "" {
 					settings.ExternalBaseURL = dbSettings.ExternalBaseURL
 				}
+				if settings.EmbedProvider == "" {
+					settings.EmbedProvider = dbSettings.EmbedProvider
+				}
+				if settings.EmbedExternalAPIKey == "" {
+					settings.EmbedExternalAPIKey = dbSettings.EmbedExternalAPIKey
+				}
+				if settings.EmbedExternalBaseURL == "" {
+					settings.EmbedExternalBaseURL = dbSettings.EmbedExternalBaseURL
+				}
 				if settings.Model == "" {
 					settings.Model = dbSettings.Model
+				}
+				if settings.EmbedModel == "" {
+					settings.EmbedModel = dbSettings.EmbedModel
 				}
 				if settings.SystemPrompt == "" {
 					settings.SystemPrompt = dbSettings.SystemPrompt

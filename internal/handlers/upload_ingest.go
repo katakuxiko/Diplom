@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -13,6 +15,7 @@ import (
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/pdf"
 	"github.com/katakuxiko/Diplom/internal/service"
+	"github.com/katakuxiko/Diplom/internal/utils"
 )
 
 type DocumentHandler struct {
@@ -20,6 +23,7 @@ type DocumentHandler struct {
 	chunkService    *service.ChunkService
 	llm             *service.LLMClient
 	cfg             *config.Config
+	chatSettings    *service.ChatSettingsService
 }
 
 // NewDocumentHandler конструктор с DI
@@ -28,12 +32,14 @@ func NewDocumentHandler(
 	chunkService *service.ChunkService,
 	llm *service.LLMClient,
 	cfg *config.Config,
+	chatSettings *service.ChatSettingsService,
 ) *DocumentHandler {
 	return &DocumentHandler{
 		documentService: documentService,
 		chunkService:    chunkService,
 		llm:             llm,
 		cfg:             cfg,
+		chatSettings:    chatSettings,
 	}
 }
 
@@ -117,7 +123,35 @@ func (h *DocumentHandler) UploadAndIngestPDF(c *fiber.Ctx) error {
 			ChatID:    chatID,
 		}
 
-		emb, err := h.llm.Embedding(p)
+		// Попробуем получить настройки чата и использовать их для эмбеддингов
+		var emb []float32
+		if h.chatSettings != nil {
+			if cs, err := h.chatSettings.GetByChatID(context.Background(), chatID); err == nil && cs != nil && cs.Settings != nil {
+				// marshal JSONB -> bytes -> AskSettings
+				raw, _ := json.Marshal(cs.Settings)
+				var dbSettings models.AskSettings
+				if err := json.Unmarshal(raw, &dbSettings); err == nil {
+					// Попробуем дешифровать ключи, если они были сохранены зашифрованными
+					if dbSettings.ExternalAPIKey != "" {
+						if dec, derr := utils.DecryptString(dbSettings.ExternalAPIKey); derr == nil {
+							dbSettings.ExternalAPIKey = dec
+						}
+					}
+					if dbSettings.EmbedExternalAPIKey != "" {
+						if dec2, derr2 := utils.DecryptString(dbSettings.EmbedExternalAPIKey); derr2 == nil {
+							dbSettings.EmbedExternalAPIKey = dec2
+						}
+					}
+					emb, err = h.llm.EmbeddingWithSettings(p, &dbSettings)
+				} else {
+					emb, err = h.llm.Embedding(p)
+				}
+			} else {
+				emb, err = h.llm.Embedding(p)
+			}
+		} else {
+			emb, err = h.llm.Embedding(p)
+		}
 		if err != nil {
 			log.Printf("embedding error (%s): %v", chunkName, err)
 			continue
