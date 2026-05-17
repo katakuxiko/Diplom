@@ -64,6 +64,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: diplom_app
+    image: avxm/diplom_app:avxm
     environment:
       - PG_CONN=host=postgres port=5432 user=postgres password=123123 dbname=pdf_ai sslmode=disable
       - SERVER_ADDR=:8080
