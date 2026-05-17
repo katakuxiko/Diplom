@@ -17,6 +17,7 @@ func RegisterAdminRoutes(app *fiber.App, svc *service.AdminService) {
 	r := app.Group("/admins")
 
 	r.Get("/", GetAdmins)
+	r.Get("/stats", GetStats)
 	r.Get("/:id", GetAdminByID)
 	r.Post("/", CreateAdmin)
 	r.Put("/:id", UpdateAdmin)
@@ -130,4 +131,21 @@ func DeleteAdmin(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(204)
+}
+
+// GetStats godoc
+// @Summary	Получить агрегированную статистику
+// @Description	Возвращает базовую статистику по системе
+// @Tags		admins
+// @Produce	json
+// @Success	200	{object} 	map[string]int64
+// @Failure	500	{object} 	map[string]string
+// @Router		/admins/stats [get]
+// @Security     BearerAuth
+func GetStats(c *fiber.Ctx) error {
+	stats, err := adminService.GetStats()
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(stats)
 }

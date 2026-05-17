@@ -59,3 +59,38 @@ func (s *AdminService) GetByUsername(username string) (*models.Admin, error) {
 func (s *AdminService) CheckPassword(password, hash string) bool {
 	return utils.CheckPassword(password, hash)
 }
+
+// GetStats собирает агрегированные метрики для админской панели
+func (s *AdminService) GetStats() (*dto.AdminStatsResponse, error) {
+	counts, err := s.repo.GetCounts()
+	if err != nil {
+		return nil, err
+	}
+
+	// Собираем статистику по каждому чату
+	perChat, err := s.repo.GetCountsPerChat()
+	if err != nil {
+		return nil, err
+	}
+
+	var chatsDto []dto.ChatStatsResponse
+	for _, c := range perChat {
+		chatsDto = append(chatsDto, dto.ChatStatsResponse{
+			ChatID:         c.ChatID,
+			Name:           c.Name,
+			UsersCount:     c.UsersCount,
+			DocumentsCount: c.DocumentsCount,
+			MessagesCount:  c.MessagesCount,
+			ChunksCount:    c.ChunksCount,
+		})
+	}
+
+	return &dto.AdminStatsResponse{
+		UsersCount:     counts.UsersCount,
+		ChatsCount:     counts.ChatsCount,
+		DocumentsCount: counts.DocumentsCount,
+		MessagesCount:  counts.MessagesCount,
+		ChunksCount:    counts.ChunksCount,
+		Chats:          chatsDto,
+	}, nil
+}
