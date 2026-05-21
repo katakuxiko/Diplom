@@ -12,7 +12,9 @@ import (
 	"github.com/katakuxiko/Diplom/internal/service"
 	"github.com/katakuxiko/Diplom/internal/storage"
 	"github.com/katakuxiko/Diplom/internal/store"
+	"github.com/katakuxiko/Diplom/internal/middleware"
 
+	_ "github.com/katakuxiko/Diplom/docs"
 	swagger "github.com/swaggo/fiber-swagger"
 )
 
@@ -29,6 +31,8 @@ import (
 func main() {
 	// config
 	cfg := config.Load()
+	
+	middleware.JwtSecret = cfg.JWTSecret
 
 	// store
 	db, err := store.NewPgStore(cfg.PgConn)

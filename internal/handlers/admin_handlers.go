@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/dto"
+	"github.com/katakuxiko/Diplom/internal/middleware"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/service"
 )
@@ -14,14 +15,14 @@ var adminService *service.AdminService
 func RegisterAdminRoutes(app *fiber.App, svc *service.AdminService) {
 	adminService = svc
 	// r := app.Group("/admins", middleware.SuperadminProtected())
-	r := app.Group("/admins")
+	r := app.Group("/admins", middleware.JWTProtected())
 
 	r.Get("/", GetAdmins)
 	r.Get("/stats", GetStats)
 	r.Get("/:id", GetAdminByID)
-	r.Post("/", CreateAdmin)
-	r.Put("/:id", UpdateAdmin)
-	r.Delete("/:id", DeleteAdmin)
+	r.Post("/", middleware.SuperadminProtected(), CreateAdmin)
+	r.Put("/:id", middleware.SuperadminProtected(), UpdateAdmin)
+	r.Delete("/:id", middleware.SuperadminProtected(), DeleteAdmin)
 }
 
 // GetAdmins godoc
@@ -38,7 +39,18 @@ func GetAdmins(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(admins)
+
+	result := make([]dto.AdminResponse, 0, len(admins))
+
+	for _, a := range admins {
+		result = append(result, dto.AdminResponse{
+			ID:          a.ID,
+			Username:    a.Username,
+			IsSuperUser: a.IsSuperUser,
+		})
+	}
+
+	return c.JSON(result)
 }
 
 // GetAdminByID godoc
@@ -60,7 +72,11 @@ func GetAdminByID(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "admin not found"})
 	}
-	return c.JSON(admin)
+	return c.JSON(dto.AdminResponse{
+		ID:          admin.ID,
+		Username:    admin.Username,
+		IsSuperUser: admin.IsSuperUser,
+	})
 }
 
 // CreateAdmin godoc
@@ -74,6 +90,7 @@ func GetAdminByID(c *fiber.Ctx) error {
 // @Failure		400		{object}	map[string]string
 // @Failure		500		{object}	map[string]string
 // @Router			/admins [post]
+// @Security     BearerAuth
 func CreateAdmin(c *fiber.Ctx) error {
 	var admin dto.AdminCreateRequest
 	if err := c.BodyParser(&admin); err != nil {
@@ -97,6 +114,7 @@ func CreateAdmin(c *fiber.Ctx) error {
 // @Failure		400		{object}	map[string]string
 // @Failure		500		{object}	map[string]string
 // @Router			/admins/{id} [put]
+// @Security     BearerAuth
 func UpdateAdmin(c *fiber.Ctx) error {
 	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {
@@ -122,6 +140,7 @@ func UpdateAdmin(c *fiber.Ctx) error {
 // @Failure		400	{object}	map[string]string
 // @Failure		500	{object}	map[string]string
 // @Router			/admins/{id} [delete]
+// @Security     BearerAuth
 func DeleteAdmin(c *fiber.Ctx) error {
 	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {
