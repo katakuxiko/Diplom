@@ -10,6 +10,7 @@ import (
 	"github.com/katakuxiko/Diplom/internal/config"
 	"github.com/katakuxiko/Diplom/internal/middleware"
 	"github.com/katakuxiko/Diplom/internal/service"
+	"github.com/katakuxiko/Diplom/internal/utils"
 )
 
 var documentService *service.DocumentService
@@ -48,6 +49,9 @@ func CreateDocument(c *fiber.Ctx) error {
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "file is required"})
+	}
+	if err := utils.ValidatePDFUpload(fileHeader); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	chatIDStr := c.FormValue("chat_id")

@@ -8,11 +8,11 @@ import (
 	"github.com/katakuxiko/Diplom/internal/api"
 	"github.com/katakuxiko/Diplom/internal/config"
 	"github.com/katakuxiko/Diplom/internal/dto"
+	"github.com/katakuxiko/Diplom/internal/middleware"
 	"github.com/katakuxiko/Diplom/internal/repository"
 	"github.com/katakuxiko/Diplom/internal/service"
 	"github.com/katakuxiko/Diplom/internal/storage"
 	"github.com/katakuxiko/Diplom/internal/store"
-	"github.com/katakuxiko/Diplom/internal/middleware"
 
 	_ "github.com/katakuxiko/Diplom/docs"
 	swagger "github.com/swaggo/fiber-swagger"
@@ -31,7 +31,7 @@ import (
 func main() {
 	// config
 	cfg := config.Load()
-	
+
 	middleware.JwtSecret = cfg.JWTSecret
 
 	// store
@@ -56,6 +56,7 @@ func main() {
 	chatSettingsRepo := repository.NewChatSettingsRepository(db)
 	chatHistoryRepo := repository.NewChatHistoryRepository(db)
 	messageRepo := repository.NewMessageRepository(db)
+	evaluationRepo := repository.NewEvaluationRepository(db)
 	// services
 	llm := service.NewLLMClient(cfg)
 	rag := service.NewRAGService(chunkRepo, llm)
@@ -67,6 +68,7 @@ func main() {
 	documentService := service.NewDocumentService(documentRepo, minioClient)
 	chatUserService := service.NewChatUserService(chatuserRepo)
 	chatSettingsService := service.NewChatSettingsService(chatSettingsRepo)
+	evaluationService := service.NewEvaluationService(evaluationRepo)
 
 	// api
 	app := fiber.New(fiber.Config{
@@ -97,7 +99,7 @@ func main() {
 	}))
 
 	app.Get("/swagger/*", swagger.WrapHandler)
-	api.RegisterRoutes(app, cfg, rag, llm, chunkService, adminService, chatService, documentService, chatUserService, chatSettingsService, chatHistoryRepo, messageRepo)
+	api.RegisterRoutes(app, cfg, rag, llm, chunkService, adminService, chatService, documentService, chatUserService, chatSettingsService, chatHistoryRepo, messageRepo, evaluationService)
 
 	log.Printf("🚀 Server started at %s", cfg.ServerAddr)
 	log.Fatal(app.Listen(cfg.ServerAddr))

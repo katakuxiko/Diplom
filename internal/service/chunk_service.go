@@ -25,3 +25,7 @@ func (s *ChunkService) SaveChunk(c models.Chunk, embedding []float32) error {
 func (s *ChunkService) SearchSimilar(vec []float32, limit int, chatID uuid.UUID, accessLevel int) ([]models.Chunk, error) {
 	return s.repo.SearchByVector(pgvector.NewVector(vec), limit, chatID, accessLevel)
 }
+
+func (s *ChunkService) SearchByKeyword(query string, limit int, chatID uuid.UUID, accessLevel int) ([]models.Chunk, error) {
+	return s.repo.SearchByKeyword(query, limit, chatID, accessLevel)
+}

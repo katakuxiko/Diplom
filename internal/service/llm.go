@@ -19,319 +19,362 @@ import (
 
 // LLMClient — клиент для LM Studio / OpenAI совместимых моделей
 type LLMClient struct {
-    client    *openai.Client
-    embedName string
-    chatName  string
-    baseURL   string
+	client    *openai.Client
+	embedName string
+	chatName  string
+	baseURL   string
+}
+
+func resolveChatProvider(s *models.AskSettings) string {
+	if s == nil {
+		return "local"
+	}
+	p := strings.ToLower(strings.TrimSpace(s.Provider))
+	if p != "" {
+		return p
+	}
+	if strings.TrimSpace(s.ExternalBaseURL) != "" || strings.TrimSpace(s.ExternalAPIKey) != "" {
+		return "external"
+	}
+	return "local"
+}
+
+func resolveEmbeddingProvider(s *models.AskSettings) string {
+	if s == nil {
+		return "local"
+	}
+	p := strings.ToLower(strings.TrimSpace(s.EmbedProvider))
+	if p != "" {
+		return p
+	}
+	if strings.TrimSpace(s.EmbedExternalBaseURL) != "" || strings.TrimSpace(s.EmbedExternalAPIKey) != "" {
+		return "external"
+	}
+	return resolveChatProvider(s)
 }
 
 // authTransport добавляет Authorization Bearer заголовок при необходимости
 type authTransport struct {
-    apiKey string
-    base   http.RoundTripper
+	apiKey string
+	base   http.RoundTripper
 }
 
 func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-    if req.Header.Get("Authorization") == "" && t.apiKey != "" {
-        req.Header.Set("Authorization", "Bearer "+t.apiKey)
-    }
-    if req.Header.Get("User-Agent") == "" {
-        req.Header.Set("User-Agent", "diplom-llm-client/1.0")
-    }
-    if t.base == nil {
-        t.base = http.DefaultTransport
-    }
-    return t.base.RoundTrip(req)
+	if req.Header.Get("Authorization") == "" && t.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+t.apiKey)
+	}
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", "diplom-llm-client/1.0")
+	}
+	if t.base == nil {
+		t.base = http.DefaultTransport
+	}
+	return t.base.RoundTrip(req)
 }
 
 // NewLLMClient создаёт новый клиент с настройками из config
 func NewLLMClient(cfg *config.Config) *LLMClient {
-    oaiCfg := openai.DefaultConfig("not-needed")
-    oaiCfg.BaseURL = normalizeAPIBase(cfg.LMBaseURL)
-    client := openai.NewClientWithConfig(oaiCfg)
+	oaiCfg := openai.DefaultConfig("not-needed")
+	oaiCfg.BaseURL = normalizeAPIBase(cfg.LMBaseURL)
+	client := openai.NewClientWithConfig(oaiCfg)
 
-    return &LLMClient{
-        client:    client,
-        embedName: cfg.EmbedModel,
-        chatName:  cfg.ChatModel,
-        baseURL:   cfg.LMBaseURL,
-    }
+	return &LLMClient{
+		client:    client,
+		embedName: cfg.EmbedModel,
+		chatName:  cfg.ChatModel,
+		baseURL:   cfg.LMBaseURL,
+	}
 }
 
 // Embedding получает embedding текста (глобальный клиент)
 func (l *LLMClient) Embedding(text string) ([]float32, error) {
-    resp, err := l.client.CreateEmbeddings(
-        context.Background(),
-        openai.EmbeddingRequest{Model: openai.EmbeddingModel(l.embedName), Input: []string{text}},
-    )
-    if err != nil {
-        return nil, err
-    }
-    return resp.Data[0].Embedding, nil
+	resp, err := l.client.CreateEmbeddings(
+		context.Background(),
+		openai.EmbeddingRequest{Model: openai.EmbeddingModel(l.embedName), Input: []string{text}},
+	)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Data[0].Embedding, nil
 }
 
 // clientForSettings возвращает openai.Client, учитывая настройки провайдера (локальный или внешний)
 func (l *LLMClient) clientForSettings(s *models.AskSettings) *openai.Client {
-    if s != nil && strings.ToLower(s.Provider) == "external" && s.ExternalAPIKey != "" {
-        cfg := openai.DefaultConfig(s.ExternalAPIKey)
-        if s.ExternalBaseURL != "" {
-            cfg.BaseURL = normalizeAPIBase(s.ExternalBaseURL)
-        }
-        cfg.HTTPClient = &http.Client{Transport: &authTransport{apiKey: s.ExternalAPIKey, base: http.DefaultTransport}}
-        return openai.NewClientWithConfig(cfg)
-    }
-    return l.client
+	provider := resolveChatProvider(s)
+	if s != nil && provider == "external" {
+		key := strings.TrimSpace(s.ExternalAPIKey)
+		if key == "" {
+			key = "not-needed"
+		}
+		cfg := openai.DefaultConfig(key)
+		if strings.TrimSpace(s.ExternalBaseURL) != "" {
+			cfg.BaseURL = normalizeAPIBase(s.ExternalBaseURL)
+		}
+		cfg.HTTPClient = &http.Client{Transport: &authTransport{apiKey: strings.TrimSpace(s.ExternalAPIKey), base: http.DefaultTransport}}
+		return openai.NewClientWithConfig(cfg)
+	}
+	return l.client
 }
 
 // clientForEmbeddingSettings возвращает openai.Client, учитывая настройки провайдера для эмбеддингов
 func (l *LLMClient) clientForEmbeddingSettings(s *models.AskSettings) *openai.Client {
-    if s == nil {
-        return l.client
-    }
-    if strings.ToLower(s.EmbedProvider) == "external" && s.EmbedExternalAPIKey != "" {
-        cfg := openai.DefaultConfig(s.EmbedExternalAPIKey)
-        if s.EmbedExternalBaseURL != "" {
-            cfg.BaseURL = normalizeAPIBase(s.EmbedExternalBaseURL)
-        }
-        cfg.HTTPClient = &http.Client{Transport: &authTransport{apiKey: s.EmbedExternalAPIKey, base: http.DefaultTransport}}
-        return openai.NewClientWithConfig(cfg)
-    }
-    return l.client
+	if s == nil {
+		return l.client
+	}
+	provider := resolveEmbeddingProvider(s)
+	if provider == "external" {
+		key := strings.TrimSpace(s.EmbedExternalAPIKey)
+		if key == "" {
+			key = strings.TrimSpace(s.ExternalAPIKey)
+		}
+		if key == "" {
+			key = "not-needed"
+		}
+		cfg := openai.DefaultConfig(key)
+		if strings.TrimSpace(s.EmbedExternalBaseURL) != "" {
+			cfg.BaseURL = normalizeAPIBase(s.EmbedExternalBaseURL)
+		} else if strings.TrimSpace(s.ExternalBaseURL) != "" {
+			cfg.BaseURL = normalizeAPIBase(s.ExternalBaseURL)
+		}
+		diagKey := strings.TrimSpace(s.EmbedExternalAPIKey)
+		if diagKey == "" {
+			diagKey = strings.TrimSpace(s.ExternalAPIKey)
+		}
+		cfg.HTTPClient = &http.Client{Transport: &authTransport{apiKey: diagKey, base: http.DefaultTransport}}
+		return openai.NewClientWithConfig(cfg)
+	}
+	return l.client
 }
 
 // diagGET делает быстрый GET к указанному URL и возвращает статус и короткую часть тела
 func diagGET(rawURL string) (string, string) {
-    if rawURL == "" {
-        return "", ""
-    }
-    client := &http.Client{Timeout: 3 * time.Second}
-    resp, err := client.Get(rawURL)
-    if err != nil {
-        return "ERR", err.Error()
-    }
-    defer resp.Body.Close()
-    b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-    return resp.Status, string(b)
+	if rawURL == "" {
+		return "", ""
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(rawURL)
+	if err != nil {
+		return "ERR", err.Error()
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	return resp.Status, string(b)
 }
 
 // diagGETWithAuth делает GET с передачей Authorization Bearer заголовка (если ключ передан)
 func diagGETWithAuth(rawURL, apiKey string) (string, string) {
-    if rawURL == "" {
-        return "", ""
-    }
-    client := &http.Client{Timeout: 3 * time.Second}
-    req, err := http.NewRequest("GET", rawURL, nil)
-    if err != nil {
-        return "ERR", err.Error()
-    }
-    if apiKey != "" {
-        req.Header.Set("Authorization", "Bearer "+apiKey)
-    }
-    resp, err := client.Do(req)
-    if err != nil {
-        return "ERR", err.Error()
-    }
-    defer resp.Body.Close()
-    b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-    return resp.Status, string(b)
+	if rawURL == "" {
+		return "", ""
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+	req, err := http.NewRequest("GET", rawURL, nil)
+	if err != nil {
+		return "ERR", err.Error()
+	}
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "ERR", err.Error()
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	return resp.Status, string(b)
 }
 
 // normalizeAPIBase возвращает корректный baseURL для OpenAI-совместимого клиента.
 // Если передан полный путь к endpoint (например "/v1/chat/completions"),
 // функция обрежет строку до корня API включая "/v1".
 func normalizeAPIBase(raw string) string {
-    if raw == "" {
-        return ""
-    }
-    u := strings.TrimSpace(raw)
-    parsed, err := url.Parse(u)
-    if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-        if idx := strings.Index(u, "/v1/"); idx != -1 {
-            return strings.TrimRight(u[:idx+3], "/")
-        }
-        if strings.HasSuffix(u, "/v1") {
-            return strings.TrimRight(u, "/")
-        }
-        return strings.TrimRight(u, "/") + "/v1"
-    }
-    base := parsed.Scheme + "://" + parsed.Host
-    if idx := strings.Index(parsed.Path, "/v1/"); idx != -1 {
-        base = base + strings.TrimRight(parsed.Path[:idx+3], "/")
-        return base
-    }
-    if strings.HasSuffix(parsed.Path, "/v1") {
-        base = base + strings.TrimRight(parsed.Path, "/")
-        return base
-    }
-    return base + "/v1"
+	if raw == "" {
+		return ""
+	}
+	u := strings.TrimSpace(raw)
+	parsed, err := url.Parse(u)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		if idx := strings.Index(u, "/v1/"); idx != -1 {
+			return strings.TrimRight(u[:idx+3], "/")
+		}
+		if strings.HasSuffix(u, "/v1") {
+			return strings.TrimRight(u, "/")
+		}
+		return strings.TrimRight(u, "/") + "/v1"
+	}
+	base := parsed.Scheme + "://" + parsed.Host
+	if idx := strings.Index(parsed.Path, "/v1/"); idx != -1 {
+		base = base + strings.TrimRight(parsed.Path[:idx+3], "/")
+		return base
+	}
+	if strings.HasSuffix(parsed.Path, "/v1") {
+		base = base + strings.TrimRight(parsed.Path, "/")
+		return base
+	}
+	return base + "/v1"
 }
 
 // hfEmbedding выполняет вызов к Hugging Face Inference/Router API для получения эмбеддингов
 func hfEmbedding(usedBase, modelName, text, apiKey string) ([]float32, error) {
-    if modelName == "" {
-        return nil, fmt.Errorf("model name is empty for HF embedding")
-    }
-    lb := strings.ToLower(usedBase)
-    var endpoint string
-    if strings.Contains(lb, "/hf-inference/") || strings.Contains(lb, "/pipeline/") {
-        endpoint = usedBase
-    } else if strings.Contains(lb, "router.huggingface.co") {
-        esc := url.PathEscape(modelName)
-        esc = strings.ReplaceAll(esc, "%2F", "/")
-        endpoint = fmt.Sprintf("https://router.huggingface.co/hf-inference/models/%s/pipeline/feature-extraction", esc)
-    } else if strings.Contains(lb, "api-inference.huggingface.co") {
-        esc := url.PathEscape(modelName)
-        esc = strings.ReplaceAll(esc, "%2F", "/")
-        endpoint = fmt.Sprintf("https://api-inference.huggingface.co/models/%s/pipeline/feature-extraction", esc)
-    } else {
-        esc := url.PathEscape(modelName)
-        esc = strings.ReplaceAll(esc, "%2F", "/")
-        endpoint = strings.TrimRight(usedBase, "/") + "/hf-inference/models/" + esc + "/pipeline/feature-extraction"
-    }
+	if modelName == "" {
+		return nil, fmt.Errorf("model name is empty for HF embedding")
+	}
+	lb := strings.ToLower(usedBase)
+	var endpoint string
+	if strings.Contains(lb, "/hf-inference/") || strings.Contains(lb, "/pipeline/") {
+		endpoint = usedBase
+	} else if strings.Contains(lb, "router.huggingface.co") {
+		esc := url.PathEscape(modelName)
+		esc = strings.ReplaceAll(esc, "%2F", "/")
+		endpoint = fmt.Sprintf("https://router.huggingface.co/hf-inference/models/%s/pipeline/feature-extraction", esc)
+	} else if strings.Contains(lb, "api-inference.huggingface.co") {
+		esc := url.PathEscape(modelName)
+		esc = strings.ReplaceAll(esc, "%2F", "/")
+		endpoint = fmt.Sprintf("https://api-inference.huggingface.co/models/%s/pipeline/feature-extraction", esc)
+	} else {
+		esc := url.PathEscape(modelName)
+		esc = strings.ReplaceAll(esc, "%2F", "/")
+		endpoint = strings.TrimRight(usedBase, "/") + "/hf-inference/models/" + esc + "/pipeline/feature-extraction"
+	}
 
-    bodyMap := map[string]interface{}{"inputs": text}
-    bodyBytes, _ := json.Marshal(bodyMap)
-    req, err := http.NewRequest("POST", endpoint, bytes.NewReader(bodyBytes))
-    if err != nil {
-        return nil, err
-    }
-    req.Header.Set("Content-Type", "application/json")
-    if apiKey != "" {
-        req.Header.Set("Authorization", "Bearer "+apiKey)
-    }
+	bodyMap := map[string]interface{}{"inputs": text}
+	bodyBytes, _ := json.Marshal(bodyMap)
+	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 
-    client := &http.Client{Timeout: 30 * time.Second}
-    resp, err := client.Do(req)
-    if err != nil {
-        return nil, err
-    }
-    defer resp.Body.Close()
-    b, _ := io.ReadAll(resp.Body)
-    if resp.StatusCode >= 400 {
-        return nil, fmt.Errorf("hf embed error, status: %s, body: %s", resp.Status, string(b))
-    }
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("hf embed error, status: %s, body: %s", resp.Status, string(b))
+	}
 
-    var parsed interface{}
-    if err := json.Unmarshal(b, &parsed); err != nil {
-        return nil, fmt.Errorf("failed to parse hf embedding response: %v body=%s", err, string(b))
-    }
+	var parsed interface{}
+	if err := json.Unmarshal(b, &parsed); err != nil {
+		return nil, fmt.Errorf("failed to parse hf embedding response: %v body=%s", err, string(b))
+	}
 
-    var floats []float32
-    var tryExtract func(interface{}) bool
-    tryExtract = func(v interface{}) bool {
-        switch x := v.(type) {
-        case []interface{}:
-            if len(x) == 0 {
-                return false
-            }
-            switch x[0].(type) {
-            case float64:
-                floats = make([]float32, len(x))
-                for i, vv := range x {
-                    if num, ok := vv.(float64); ok {
-                        floats[i] = float32(num)
-                    } else {
-                        return false
-                    }
-                }
-                return true
-            default:
-                for _, item := range x {
-                    if tryExtract(item) {
-                        return true
-                    }
-                }
-                return false
-            }
-        default:
-            return false
-        }
-    }
+	var floats []float32
+	var tryExtract func(interface{}) bool
+	tryExtract = func(v interface{}) bool {
+		switch x := v.(type) {
+		case []interface{}:
+			if len(x) == 0 {
+				return false
+			}
+			switch x[0].(type) {
+			case float64:
+				floats = make([]float32, len(x))
+				for i, vv := range x {
+					if num, ok := vv.(float64); ok {
+						floats[i] = float32(num)
+					} else {
+						return false
+					}
+				}
+				return true
+			default:
+				for _, item := range x {
+					if tryExtract(item) {
+						return true
+					}
+				}
+				return false
+			}
+		default:
+			return false
+		}
+	}
 
-    if !tryExtract(parsed) {
-        return nil, fmt.Errorf("unexpected hf embedding response format: %s", string(b))
-    }
-    return floats, nil
+	if !tryExtract(parsed) {
+		return nil, fmt.Errorf("unexpected hf embedding response format: %s", string(b))
+	}
+	return floats, nil
 }
 
 // EmbeddingWithSettings позволяет получать embedding, используя провайдера из настроек
 func (l *LLMClient) EmbeddingWithSettings(text string, s *models.AskSettings) ([]float32, error) {
-    client := l.clientForEmbeddingSettings(s)
-    modelName := l.embedName
-    if s != nil && s.EmbedModel != "" {
-        modelName = s.EmbedModel
-    }
-    usedBase := l.baseURL
-    if s != nil {
-        if strings.ToLower(s.EmbedProvider) == "external" && s.EmbedExternalBaseURL != "" {
-            usedBase = s.EmbedExternalBaseURL
-        } else if strings.ToLower(s.Provider) == "external" && s.ExternalBaseURL != "" {
-            usedBase = s.ExternalBaseURL
-        }
-    }
-    apiKey := ""
-    if s != nil {
-        if strings.ToLower(s.EmbedProvider) == "external" && s.EmbedExternalAPIKey != "" {
-            apiKey = s.EmbedExternalAPIKey
-        } else if strings.ToLower(s.Provider) == "external" && s.ExternalAPIKey != "" {
-            apiKey = s.ExternalAPIKey
-        }
-    }
+	client := l.clientForEmbeddingSettings(s)
+	modelName := l.embedName
+	if s != nil && s.EmbedModel != "" {
+		modelName = s.EmbedModel
+	}
+	usedBase := l.baseURL
+	provider := resolveEmbeddingProvider(s)
+	if s != nil {
+		if provider == "external" && strings.TrimSpace(s.EmbedExternalBaseURL) != "" {
+			usedBase = s.EmbedExternalBaseURL
+		} else if provider == "external" && strings.TrimSpace(s.ExternalBaseURL) != "" {
+			usedBase = s.ExternalBaseURL
+		}
+	}
+	apiKey := ""
+	if s != nil {
+		if provider == "external" && strings.TrimSpace(s.EmbedExternalAPIKey) != "" {
+			apiKey = s.EmbedExternalAPIKey
+		} else if provider == "external" && strings.TrimSpace(s.ExternalAPIKey) != "" {
+			apiKey = s.ExternalAPIKey
+		}
+	}
 
-    log.Printf("Embedding request: model=%s provider=%s baseURL=%s", modelName, func() string {
-        if s == nil {
-            return "(default)"
-        }
-        return s.EmbedProvider
-    }(), usedBase)
+	log.Printf("Embedding request: model=%s provider=%s baseURL=%s", modelName, provider, usedBase)
 
-    // Если указан Hugging Face в usedBase — вызываем HF inference напрямую
-    if strings.Contains(strings.ToLower(usedBase), "huggingface") {
-        emb, err := hfEmbedding(usedBase, modelName, text, apiKey)
-        if err != nil {
-            log.Printf("Embedding error (hf): %v", err)
-            if usedBase != "" {
-                status, body := diagGETWithAuth(usedBase, apiKey)
-                log.Printf("Embedding diagnostic GET %s -> status=%s body=%s", usedBase, status, body)
-            }
-            return nil, err
-        }
-        return emb, nil
-    }
+	// Если указан Hugging Face в usedBase — вызываем HF inference напрямую
+	if strings.Contains(strings.ToLower(usedBase), "huggingface") {
+		emb, err := hfEmbedding(usedBase, modelName, text, apiKey)
+		if err != nil {
+			log.Printf("Embedding error (hf): %v", err)
+			if usedBase != "" {
+				status, body := diagGETWithAuth(usedBase, apiKey)
+				log.Printf("Embedding diagnostic GET %s -> status=%s body=%s", usedBase, status, body)
+			}
+			return nil, err
+		}
+		return emb, nil
+	}
 
-    resp, err := client.CreateEmbeddings(
-        context.Background(),
-        openai.EmbeddingRequest{Model: openai.EmbeddingModel(modelName), Input: []string{text}},
-    )
-    if err != nil {
-        log.Printf("Embedding error: %v", err)
-        if usedBase != "" {
-            status, body := diagGETWithAuth(usedBase, apiKey)
-            log.Printf("Embedding diagnostic GET %s -> status=%s body=%s", usedBase, status, body)
-        }
-        return nil, err
-    }
-    return resp.Data[0].Embedding, nil
+	resp, err := client.CreateEmbeddings(
+		context.Background(),
+		openai.EmbeddingRequest{Model: openai.EmbeddingModel(modelName), Input: []string{text}},
+	)
+	if err != nil {
+		log.Printf("Embedding error: %v", err)
+		if usedBase != "" {
+			status, body := diagGETWithAuth(usedBase, apiKey)
+			log.Printf("Embedding diagnostic GET %s -> status=%s body=%s", usedBase, status, body)
+		}
+		return nil, err
+	}
+	return resp.Data[0].Embedding, nil
 }
 
 // Ask выполняет RAG/LLM запрос с контекстом и настраиваемыми параметрами
 func (l *LLMClient) Ask(query, contextText string, settings *models.AskSettings) (string, error) {
-    greetings := []string{"привет", "привет!", "здравствуй", "здравствуйте", "hi", "hello", "hey", "привета", "хай", "хелло"}
-    lowerQuery := strings.ToLower(strings.TrimSpace(query))
-    for _, greeting := range greetings {
-        if lowerQuery == greeting {
-            return "Привет! 👋 Я помогу найти информацию в загруженных документах. Задайте ваш вопрос.", nil
-        }
-    }
+	greetings := []string{"привет", "привет!", "здравствуй", "здравствуйте", "hi", "hello", "hey", "привета", "хай", "хелло"}
+	lowerQuery := strings.ToLower(strings.TrimSpace(query))
+	for _, greeting := range greetings {
+		if lowerQuery == greeting {
+			return "Привет! 👋 Я помогу найти информацию в загруженных документах. Задайте ваш вопрос.", nil
+		}
+	}
 
-    if strings.TrimSpace(contextText) == "" {
-        return "К сожалению, в загруженных документах не найдено информации по вашему запросу. Попробуйте переформулировать вопрос или загрузите дополнительные материалы.", nil
-    }
+	if strings.TrimSpace(contextText) == "" {
+		return "К сожалению, в загруженных документах не найдено информации по вашему запросу. Попробуйте переформулировать вопрос или загрузите дополнительные материалы.", nil
+	}
 
-    modelName := l.chatName
-    temperature := float32(0.7)
-    maxTokens := 2000
-    systemPrompt := `Ты - профессиональный аналитик документов. Твоя задача - давать точные, структурированные ответы на основе предоставленных материалов.
+	modelName := l.chatName
+	temperature := float32(0.7)
+	maxTokens := 2000
+	systemPrompt := `Ты - профессиональный аналитик документов. Твоя задача - давать точные, структурированные ответы на основе предоставленных материалов.
 
 КРИТИЧЕСКИЕ ПРАВИЛА:
 1. Используй ТОЛЬКО информацию из КОНТЕКСТА ниже
@@ -346,61 +389,61 @@ func (l *LLMClient) Ask(query, contextText string, settings *models.AskSettings)
 - Избегай упоминаний о "контексте", "документах" или своей природе как ИИ
 - Отвечай прямо на вопрос, без лишних вступлений`
 
-    if settings != nil {
-        if settings.Model != "" {
-            modelName = settings.Model
-        }
-        if settings.SystemPrompt != "" {
-            systemPrompt = settings.SystemPrompt
-        }
-        if settings.MaxTokens > 0 {
-            maxTokens = settings.MaxTokens
-        }
-        if settings.Temperature > 0 {
-            temperature = settings.Temperature
-        }
-    }
+	if settings != nil {
+		if settings.Model != "" {
+			modelName = settings.Model
+		}
+		if settings.SystemPrompt != "" {
+			systemPrompt = settings.SystemPrompt
+		}
+		if settings.MaxTokens > 0 {
+			maxTokens = settings.MaxTokens
+		}
+		if settings.Temperature > 0 {
+			temperature = settings.Temperature
+		}
+	}
 
-    userPrompt := fmt.Sprintf("КОНТЕКСТ:\n%s\n\nВОПРОС: %s\n\nОТВЕТ:", contextText, query)
+	userPrompt := fmt.Sprintf("КОНТЕКСТ:\n%s\n\nВОПРОС: %s\n\nОТВЕТ:", contextText, query)
 
-    resp, err := l.client.CreateChatCompletion(
-        context.Background(),
-        openai.ChatCompletionRequest{
-            Model: modelName,
-            Messages: []openai.ChatCompletionMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: userPrompt}},
-            Temperature:     temperature,
-            TopP:            0.9,
-            MaxTokens:       maxTokens,
-            PresencePenalty: 0.1,
-        },
-    )
-    if err != nil {
-        return "", err
-    }
-    if len(resp.Choices) == 0 {
-        return "", fmt.Errorf("LLM вернул пустой ответ")
-    }
-    return strings.TrimSpace(resp.Choices[0].Message.Content), nil
+	resp, err := l.client.CreateChatCompletion(
+		context.Background(),
+		openai.ChatCompletionRequest{
+			Model:           modelName,
+			Messages:        []openai.ChatCompletionMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: userPrompt}},
+			Temperature:     temperature,
+			TopP:            0.9,
+			MaxTokens:       maxTokens,
+			PresencePenalty: 0.1,
+		},
+	)
+	if err != nil {
+		return "", err
+	}
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("LLM вернул пустой ответ")
+	}
+	return strings.TrimSpace(resp.Choices[0].Message.Content), nil
 }
 
 // AskWithSettings выполняет запрос к модели с учётом per-chat провайдера (локальный или внешний)
 func (l *LLMClient) AskWithSettings(query, contextText string, settings *models.AskSettings) (string, error) {
-    greetings := []string{"привет", "привет!", "здравствуй", "здравствуйте", "hi", "hello", "hey", "привета", "хай", "хелло"}
-    lowerQuery := strings.ToLower(strings.TrimSpace(query))
-    for _, greeting := range greetings {
-        if lowerQuery == greeting {
-            return "Привет! 👋 Я помогу найти информацию в загруженных документах. Задайте ваш вопрос.", nil
-        }
-    }
+	greetings := []string{"привет", "привет!", "здравствуй", "здравствуйте", "hi", "hello", "hey", "привета", "хай", "хелло"}
+	lowerQuery := strings.ToLower(strings.TrimSpace(query))
+	for _, greeting := range greetings {
+		if lowerQuery == greeting {
+			return "Привет! 👋 Я помогу найти информацию в загруженных документах. Задайте ваш вопрос.", nil
+		}
+	}
 
-    if strings.TrimSpace(contextText) == "" {
-        return "К сожалению, в загруженных документах не найдено информации по вашему запросу. Попробуйте переформулировать вопрос или загрузите дополнительные материалы.", nil
-    }
+	if strings.TrimSpace(contextText) == "" {
+		return "К сожалению, в загруженных документах не найдено информации по вашему запросу. Попробуйте переформулировать вопрос или загрузите дополнительные материалы.", nil
+	}
 
-    modelName := l.chatName
-    temperature := float32(0.7)
-    maxTokens := 2000
-    systemPrompt := `Ты - профессиональный аналитик документов. Твоя задача - давать точные, структурированные ответы на основе предоставленных материалов.
+	modelName := l.chatName
+	temperature := float32(0.7)
+	maxTokens := 2000
+	systemPrompt := `Ты - профессиональный аналитик документов. Твоя задача - давать точные, структурированные ответы на основе предоставленных материалов.
 
 КРИТИЧЕСКИЕ ПРАВИЛА:
 1. Используй ТОЛЬКО информацию из КОНТЕКСТА ниже
@@ -415,72 +458,68 @@ func (l *LLMClient) AskWithSettings(query, contextText string, settings *models.
 - Избегай упоминаний о "контексте", "документах" или своей природе как ИИ
 - Отвечай прямо на вопрос, без лишних вступлений`
 
-    if settings != nil {
-        if settings.Model != "" {
-            modelName = settings.Model
-        }
-        if settings.SystemPrompt != "" {
-            systemPrompt = settings.SystemPrompt
-        }
-        if settings.MaxTokens > 0 {
-            maxTokens = settings.MaxTokens
-        }
-        if settings.Temperature > 0 {
-            temperature = settings.Temperature
-        }
-    }
+	if settings != nil {
+		if settings.Model != "" {
+			modelName = settings.Model
+		}
+		if settings.SystemPrompt != "" {
+			systemPrompt = settings.SystemPrompt
+		}
+		if settings.MaxTokens > 0 {
+			maxTokens = settings.MaxTokens
+		}
+		if settings.Temperature > 0 {
+			temperature = settings.Temperature
+		}
+	}
 
-    userPrompt := fmt.Sprintf("КОНТЕКСТ:\n%s\n\nВОПРОС: %s\n\nОТВЕТ:", contextText, query)
+	userPrompt := fmt.Sprintf("КОНТЕКСТ:\n%s\n\nВОПРОС: %s\n\nОТВЕТ:", contextText, query)
 
-    client := l.clientForSettings(settings)
+	client := l.clientForSettings(settings)
 
-    usedBase := l.baseURL
-    if settings != nil {
-        if strings.ToLower(settings.Provider) == "external" && settings.ExternalBaseURL != "" {
-            usedBase = settings.ExternalBaseURL
-        }
-    }
-    log.Printf("Chat request: model=%s provider=%s baseURL=%s", modelName, func() string {
-        if settings == nil {
-            return "(default)"
-        }
-        return settings.Provider
-    }(), usedBase)
+	usedBase := l.baseURL
+	provider := resolveChatProvider(settings)
+	if settings != nil {
+		if provider == "external" && strings.TrimSpace(settings.ExternalBaseURL) != "" {
+			usedBase = settings.ExternalBaseURL
+		}
+	}
+	log.Printf("Chat request: model=%s provider=%s baseURL=%s", modelName, provider, usedBase)
 
-    resp, err := client.CreateChatCompletion(
-        context.Background(),
-        openai.ChatCompletionRequest{
-            Model: modelName,
-            Messages: []openai.ChatCompletionMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: userPrompt}},
-            Temperature:     temperature,
-            TopP:            0.9,
-            MaxTokens:       maxTokens,
-            PresencePenalty: 0.1,
-        },
-    )
-    if err != nil {
-        log.Printf("Chat error: %v", err)
-        if usedBase != "" {
-            diagKey := ""
-            if settings != nil && strings.ToLower(settings.Provider) == "external" && settings.ExternalAPIKey != "" {
-                diagKey = settings.ExternalAPIKey
-            }
-            status, body := diagGETWithAuth(usedBase, diagKey)
-            log.Printf("Chat diagnostic GET %s -> status=%s body=%s", usedBase, status, body)
-        }
-        return "", err
-    }
-    if len(resp.Choices) == 0 {
-        return "", fmt.Errorf("LLM вернул пустой ответ")
-    }
-    return strings.TrimSpace(resp.Choices[0].Message.Content), nil
+	resp, err := client.CreateChatCompletion(
+		context.Background(),
+		openai.ChatCompletionRequest{
+			Model:           modelName,
+			Messages:        []openai.ChatCompletionMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: userPrompt}},
+			Temperature:     temperature,
+			TopP:            0.9,
+			MaxTokens:       maxTokens,
+			PresencePenalty: 0.1,
+		},
+	)
+	if err != nil {
+		log.Printf("Chat error: %v", err)
+		if usedBase != "" {
+			diagKey := ""
+			if settings != nil && provider == "external" && settings.ExternalAPIKey != "" {
+				diagKey = settings.ExternalAPIKey
+			}
+			status, body := diagGETWithAuth(usedBase, diagKey)
+			log.Printf("Chat diagnostic GET %s -> status=%s body=%s", usedBase, status, body)
+		}
+		return "", err
+	}
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("LLM вернул пустой ответ")
+	}
+	return strings.TrimSpace(resp.Choices[0].Message.Content), nil
 }
 
 // ListModels возвращает список моделей LM Studio
 func (l *LLMClient) ListModels() ([]openai.Model, error) {
-    resp, err := l.client.ListModels(context.Background())
-    if err != nil {
-        return nil, err
-    }
-    return resp.Models, nil
+	resp, err := l.client.ListModels(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	return resp.Models, nil
 }

@@ -29,6 +29,9 @@ func NewPgStore(conn string) (*gorm.DB, error) {
 		&models.ChatUser{},
 		&models.ChatHistory{},
 		&models.Message{},
+		&models.TestQuestion{},
+		&models.EvaluationRun{},
+		&models.EvaluationResult{},
 	); err != nil {
 		return nil, err
 	}

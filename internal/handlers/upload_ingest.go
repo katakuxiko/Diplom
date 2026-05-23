@@ -65,6 +65,9 @@ func (h *DocumentHandler) UploadAndIngestPDF(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "file is required"})
 	}
+	if err := utils.ValidatePDFUpload(fileHeader); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
 
 	chatIDStr := c.FormValue("chat_id")
 	chatID, err := uuid.Parse(chatIDStr)
