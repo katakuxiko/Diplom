@@ -25,6 +25,65 @@ type LLMClient struct {
 	baseURL   string
 }
 
+const (
+	maxAutoContinuationParts = 2
+	continuePrompt           = "Продолжи ответ с того места, где остановился. Не повторяй уже сказанное и сохрани структуру ответа."
+)
+
+func createChatCompletionWithContinuation(client *openai.Client, req openai.ChatCompletionRequest) (string, error) {
+	parts := make([]string, 0, maxAutoContinuationParts+1)
+	workingReq := req
+
+	for attempt := 0; attempt <= maxAutoContinuationParts; attempt++ {
+		resp, err := client.CreateChatCompletion(context.Background(), workingReq)
+		if err != nil {
+			return "", err
+		}
+		if len(resp.Choices) == 0 {
+			return "", fmt.Errorf("LLM вернул пустой ответ")
+		}
+
+		choice := resp.Choices[0]
+		content := strings.TrimSpace(choice.Message.Content)
+		if content != "" {
+			parts = append(parts, content)
+		}
+
+		if strings.ToLower(strings.TrimSpace(string(choice.FinishReason))) != "length" {
+			break
+		}
+		if attempt == maxAutoContinuationParts || content == "" {
+			break
+		}
+
+		workingReq.Messages = append(workingReq.Messages,
+			openai.ChatCompletionMessage{Role: "assistant", Content: content},
+			openai.ChatCompletionMessage{Role: "user", Content: continuePrompt},
+		)
+	}
+
+	result := strings.TrimSpace(strings.Join(parts, "\n"))
+	if result == "" {
+		return "", fmt.Errorf("LLM вернул пустой ответ")
+	}
+	return result, nil
+}
+
+func reasoningEffortForModel(modelName string) string {
+	m := strings.ToLower(strings.TrimSpace(modelName))
+	if m == "" {
+		return ""
+	}
+	if strings.Contains(m, "reasoner") ||
+		strings.Contains(m, "thinking") ||
+		strings.Contains(m, "deepseek-r1") ||
+		strings.Contains(m, "o3") ||
+		strings.Contains(m, "o4") {
+		return "low"
+	}
+	return ""
+}
+
 func resolveChatProvider(s *models.AskSettings) string {
 	if s == nil {
 		return "local"
@@ -406,24 +465,19 @@ func (l *LLMClient) Ask(query, contextText string, settings *models.AskSettings)
 
 	userPrompt := fmt.Sprintf("КОНТЕКСТ:\n%s\n\nВОПРОС: %s\n\nОТВЕТ:", contextText, query)
 
-	resp, err := l.client.CreateChatCompletion(
-		context.Background(),
-		openai.ChatCompletionRequest{
-			Model:           modelName,
-			Messages:        []openai.ChatCompletionMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: userPrompt}},
-			Temperature:     temperature,
-			TopP:            0.9,
-			MaxTokens:       maxTokens,
-			PresencePenalty: 0.1,
-		},
-	)
-	if err != nil {
-		return "", err
+	req := openai.ChatCompletionRequest{
+		Model:           modelName,
+		Messages:        []openai.ChatCompletionMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: userPrompt}},
+		Temperature:     temperature,
+		TopP:            0.9,
+		MaxTokens:       maxTokens,
+		PresencePenalty: 0.1,
 	}
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("LLM вернул пустой ответ")
+	if effort := reasoningEffortForModel(modelName); effort != "" {
+		req.ReasoningEffort = effort
 	}
-	return strings.TrimSpace(resp.Choices[0].Message.Content), nil
+
+	return createChatCompletionWithContinuation(l.client, req)
 }
 
 // AskWithSettings выполняет запрос к модели с учётом per-chat провайдера (локальный или внешний)
@@ -486,17 +540,19 @@ func (l *LLMClient) AskWithSettings(query, contextText string, settings *models.
 	}
 	log.Printf("Chat request: model=%s provider=%s baseURL=%s", modelName, provider, usedBase)
 
-	resp, err := client.CreateChatCompletion(
-		context.Background(),
-		openai.ChatCompletionRequest{
-			Model:           modelName,
-			Messages:        []openai.ChatCompletionMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: userPrompt}},
-			Temperature:     temperature,
-			TopP:            0.9,
-			MaxTokens:       maxTokens,
-			PresencePenalty: 0.1,
-		},
-	)
+	req := openai.ChatCompletionRequest{
+		Model:           modelName,
+		Messages:        []openai.ChatCompletionMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: userPrompt}},
+		Temperature:     temperature,
+		TopP:            0.9,
+		MaxTokens:       maxTokens,
+		PresencePenalty: 0.1,
+	}
+	if effort := reasoningEffortForModel(modelName); effort != "" {
+		req.ReasoningEffort = effort
+	}
+
+	answer, err := createChatCompletionWithContinuation(client, req)
 	if err != nil {
 		log.Printf("Chat error: %v", err)
 		if usedBase != "" {
@@ -509,10 +565,7 @@ func (l *LLMClient) AskWithSettings(query, contextText string, settings *models.
 		}
 		return "", err
 	}
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("LLM вернул пустой ответ")
-	}
-	return strings.TrimSpace(resp.Choices[0].Message.Content), nil
+	return answer, nil
 }
 
 // ListModels возвращает список моделей LM Studio
