@@ -13,6 +13,7 @@ type ChatServiceInterface interface {
 	Create(req *dto.ChatCreateRequest) (*models.Chat, error)
 	CreateForAdmin(adminID string, req *dto.ChatCreateRequest) (*models.Chat, error)
 	GetByID(id string) (*models.Chat, error)
+	ListAll() ([]models.Chat, error)
 	ListByAdmin(adminID string) ([]models.Chat, error)
 	Delete(id string) error
 	Update(id string, req *dto.ChatUpdateRequest) (*models.Chat, error)
@@ -60,6 +61,10 @@ func (s *ChatService) CreateForAdmin(adminID string, req *dto.ChatCreateRequest)
 
 func (s *ChatService) GetByID(id string) (*models.Chat, error) {
 	return s.repo.GetByID(id)
+}
+
+func (s *ChatService) ListAll() ([]models.Chat, error) {
+	return s.repo.List()
 }
 
 func (s *ChatService) ListByAdmin(adminID string) ([]models.Chat, error) {

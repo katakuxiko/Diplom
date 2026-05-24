@@ -108,6 +108,34 @@ func ListChats(chatService service.ChatServiceInterface) fiber.Handler {
 	}
 }
 
+// ListPublicChats godoc
+// @Summary      Получить публичный список всех чатов
+// @Tags         chats
+// @Produce      json
+// @Success      200 {array} dto.ChatResponse
+// @Router       /public/chats [get]
+func ListPublicChats(chatService service.ChatServiceInterface) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		chats, err := chatService.ListAll()
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+
+		res := make([]dto.ChatResponse, 0, len(chats))
+		for _, chat := range chats {
+			res = append(res, dto.ChatResponse{
+				ID:          chat.ID,
+				AdminID:     chat.AdminID,
+				Name:        chat.Name,
+				Descr:       chat.Descr,
+				CreatedDate: chat.CreatedDate,
+			})
+		}
+
+		return c.JSON(res)
+	}
+}
+
 // DeleteChat godoc
 // @Summary      Удалить чат
 // @Tags         chats

@@ -44,6 +44,7 @@ func RegisterRoutes(app *fiber.App, cfg *config.Config, rag *service.RAGService,
 
 	// Публичный просмотр истории чатов (доступен без JWT)
 	app.Get("/chats/:chat_id/history", h.GetChatHistoryForAdmin)
+	app.Get("/public/chats", handlers.ListPublicChats(chatService))
 
 	// Защищенные (только с JWT) эндпоинты
 	newApp := app.Group("", middleware.JWTProtected())
