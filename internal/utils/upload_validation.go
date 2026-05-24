@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const MaxPDFSizeBytes int64 = 20 * 1024 * 1024 // 20 MB
+const MaxPDFSizeBytes int64 = 50 * 1024 * 1024 // 50 MB
 
 func ValidatePDFUpload(fileHeader *multipart.FileHeader) error {
 	if fileHeader == nil {
@@ -18,7 +18,7 @@ func ValidatePDFUpload(fileHeader *multipart.FileHeader) error {
 		return fmt.Errorf("file is empty")
 	}
 	if fileHeader.Size > MaxPDFSizeBytes {
-		return fmt.Errorf("file is too large, max size is 20MB")
+		return fmt.Errorf("file is too large, max size is 50MB")
 	}
 
 	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
