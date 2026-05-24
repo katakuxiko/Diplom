@@ -26,11 +26,12 @@ type AskSettings struct {
 }
 
 type AskRequest struct {
-	Query    string       `json:"query"`
-	Model    string       `json:"model,omitempty"`
-	TopK     int          `json:"topK,omitempty"`
-	ChatID   uuid.UUID    `json:"chat_id"`
-	Settings *AskSettings `json:"settings,omitempty"`
+	Query         string       `json:"query"`
+	Model         string       `json:"model,omitempty"`
+	TopK          int          `json:"topK,omitempty"`
+	ChatID        uuid.UUID    `json:"chat_id"`
+	ChatHistoryID *uuid.UUID   `json:"chat_history_id,omitempty"`
+	Settings      *AskSettings `json:"settings,omitempty"`
 }
 
 type Rule struct {

@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
@@ -179,6 +180,21 @@ func (h *Handler) AskQuestion(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid request, expected JSON: {\"query\":\"...\"}"})
 	}
 
+	effectiveQuery := strings.TrimSpace(req.Query)
+	continuationResolved := false
+	continuationBaseQuery := ""
+
+	if isContinuationPrompt(effectiveQuery) && req.ChatHistoryID != nil && h.messageRepo != nil {
+		baseQuery, lastAssistant, resolveErr := h.resolveContinuationFromHistory(*req.ChatHistoryID)
+		if resolveErr != nil {
+			log.Printf("continuation resolve error: %v", resolveErr)
+		} else if strings.TrimSpace(baseQuery) != "" {
+			continuationResolved = true
+			continuationBaseQuery = baseQuery
+			effectiveQuery = buildContinuationQuery(baseQuery, lastAssistant)
+		}
+	}
+
 	modelName := req.Model
 	// topK fallback
 	k := req.TopK
@@ -296,7 +312,7 @@ func (h *Handler) AskQuestion(c *fiber.Ctx) error {
 	}
 
 	// если модель указана, используем её; иначе — дефолт внутри LLMClient/Service
-	ans, ctxChunks, diagnostics, err := h.rag.AskWithDiagnostics(req.Query, k, req.ChatID, settings, accessLevel)
+	ans, ctxChunks, diagnostics, err := h.rag.AskWithDiagnostics(effectiveQuery, k, req.ChatID, settings, accessLevel)
 	if err != nil {
 		log.Printf("rag ask error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -307,6 +323,13 @@ func (h *Handler) AskQuestion(c *fiber.Ctx) error {
 		"context":               ctxChunks,
 		"model":                 modelName,
 		"retrieval_diagnostics": diagnostics,
+		"continuation_resolved": continuationResolved,
+		"continuation_base_query": func() string {
+			if continuationResolved {
+				return continuationBaseQuery
+			}
+			return ""
+		}(),
 	})
 }
 
@@ -1289,4 +1312,90 @@ func evaluateRetrievalCalibration(rag *service.RAGService, samples []retrievalCa
 	}
 
 	return metrics
+}
+
+func (h *Handler) resolveContinuationFromHistory(chatHistoryID uuid.UUID) (string, string, error) {
+	messages, err := h.messageRepo.GetRecentByChatHistoryID(chatHistoryID, 30)
+	if err != nil {
+		return "", "", err
+	}
+
+	lastAssistant := ""
+	baseQuestion := ""
+
+	for _, msg := range messages {
+		text := strings.TrimSpace(msg.Text)
+		if text == "" {
+			continue
+		}
+
+		if lastAssistant == "" && isAssistantRole(msg.Role) {
+			lastAssistant = text
+			continue
+		}
+
+		if isUserRole(msg.Role) && !isContinuationPrompt(text) {
+			baseQuestion = text
+			break
+		}
+	}
+
+	return baseQuestion, lastAssistant, nil
+}
+
+func buildContinuationQuery(baseQuestion, lastAssistant string) string {
+	baseQuestion = strings.TrimSpace(baseQuestion)
+	if baseQuestion == "" {
+		return "продолжи ответ"
+	}
+
+	if strings.TrimSpace(lastAssistant) == "" {
+		return baseQuestion + "\n\nПользователь попросил продолжить предыдущий ответ по этому же вопросу. Продолжи без повторения уже сказанного."
+	}
+
+	return fmt.Sprintf(
+		"%s\n\nПользователь попросил продолжить предыдущий ответ по этому же вопросу. Не повторяй уже сказанное и начни с новой информации. Последний отправленный фрагмент ответа:\n%s",
+		baseQuestion,
+		utils.TruncateByChars(strings.TrimSpace(lastAssistant), 1200),
+	)
+}
+
+func isUserRole(role string) bool {
+	r := strings.ToLower(strings.TrimSpace(role))
+	return r == "user"
+}
+
+func isAssistantRole(role string) bool {
+	r := strings.ToLower(strings.TrimSpace(role))
+	return r == "assistant" || r == "ai" || r == "bot"
+}
+
+func isContinuationPrompt(query string) bool {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return false
+	}
+
+	// Слишком длинные запросы считаем обычными вопросами.
+	if len([]rune(q)) > 60 {
+		return false
+	}
+
+	normalized := normalizePrompt(q)
+	switch normalized {
+	case "продолжи", "продолжай", "продолжить", "продолжи ответ", "продолжи пожалуйста", "далее", "еще", "ещё", "continue", "go on", "continue please", "next", "more":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizePrompt(s string) string {
+	parts := strings.FieldsFunc(strings.ToLower(s), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, " ")
 }
