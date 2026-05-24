@@ -77,6 +77,7 @@ func reasoningEffortForModel(modelName string) string {
 	if strings.Contains(m, "reasoner") ||
 		strings.Contains(m, "thinking") ||
 		strings.Contains(m, "deepseek-r1") ||
+		strings.Contains(m, "DeepSeek-V4-Pro") ||
 		strings.Contains(m, "o3") ||
 		strings.Contains(m, "o4") {
 		return "low"

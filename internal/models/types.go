@@ -3,18 +3,22 @@ package models
 import "github.com/google/uuid"
 
 type AskSettings struct {
-	EnableHistory  bool    `json:"enableHistory"`
-	MaxTokens      int     `json:"maxTokens"`
-	Model          string  `json:"model"`
-	EmbedModel     string  `json:"embedModel,omitempty"`
+	EnableHistory     bool    `json:"enableHistory"`
+	MaxTokens         int     `json:"maxTokens"`
+	Model             string  `json:"model"`
+	EmbedModel        string  `json:"embedModel,omitempty"`
+	RetrievalMode     string  `json:"retrievalMode,omitempty"` // "vector", "keyword", "hybrid"
+	MaxCosineDistance float32 `json:"maxCosineDistance,omitempty"`
+	MaxDistanceGap    float32 `json:"maxDistanceGap,omitempty"`
+	MinChunkChars     int     `json:"minChunkChars,omitempty"`
 	// Embedding provider specific settings
-	EmbedProvider        string `json:"embedProvider,omitempty"`
-	EmbedExternalAPIKey  string `json:"embedExternalApiKey,omitempty"`
-	EmbedExternalBaseURL string `json:"embedExternalBaseUrl,omitempty"`
-	RequestsLimit  int     `json:"requestsLimit"`
-	RequestsWindow int     `json:"requestsWindow"`
-	SystemPrompt   string  `json:"systemPrompt"`
-	Temperature    float32 `json:"temperature"`
+	EmbedProvider        string  `json:"embedProvider,omitempty"`
+	EmbedExternalAPIKey  string  `json:"embedExternalApiKey,omitempty"`
+	EmbedExternalBaseURL string  `json:"embedExternalBaseUrl,omitempty"`
+	RequestsLimit        int     `json:"requestsLimit"`
+	RequestsWindow       int     `json:"requestsWindow"`
+	SystemPrompt         string  `json:"systemPrompt"`
+	Temperature          float32 `json:"temperature"`
 	// Provider settings
 	Provider        string `json:"provider,omitempty"`        // "local" or "external"
 	ExternalAPIKey  string `json:"externalApiKey,omitempty"`  // api key for external provider

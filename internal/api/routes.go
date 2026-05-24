@@ -61,5 +61,7 @@ func RegisterRoutes(app *fiber.App, cfg *config.Config, rag *service.RAGService,
 	newApp.Get("/evaluations/runs/:run_id", h.GetEvaluationRun)
 	newApp.Get("/evaluations/runs/:run_id/metrics", h.GetEvaluationRunMetrics)
 	newApp.Get("/evaluations/runs/:run_id/baseline", h.CompareRunWithBaseline)
+	newApp.Get("/evaluations/runs/:run_id/retrieval-calibration", h.CalibrateRunRetrieval)
+	newApp.Post("/evaluations/runs/:run_id/retrieval-calibration/apply", h.ApplyRunRetrievalCalibration)
 	newApp.Put("/evaluations/results/:result_id/score", h.ScoreEvaluationResult)
 }

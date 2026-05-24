@@ -47,16 +47,20 @@ type Document struct {
 
 // Чанки
 type Chunk struct {
-	ID        uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
-	DocID     uuid.UUID `gorm:"type:uuid;not null"`
-	ChatID    uuid.UUID `gorm:"type:uuid;" swaggerignore:"true" json:"-"`
-	DocName   string
-	Text      string
-	Embedding pgvector.Vector `gorm:"type:vector(768)" swaggerignore:"true" json:"-"`
-	Filepath  string
-	ChunkName string
-	Document  Document `gorm:"foreignKey:DocID;references:ID" swaggerignore:"true" json:"-"`
-	Chat      Chat     `gorm:"foreignKey:ChatID;references:ID" swaggerignore:"true" json:"-"`
+	ID              uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
+	DocID           uuid.UUID `gorm:"type:uuid;not null"`
+	ChatID          uuid.UUID `gorm:"type:uuid;" swaggerignore:"true" json:"-"`
+	DocName         string
+	Text            string
+	Embedding       pgvector.Vector `gorm:"type:vector(768)" swaggerignore:"true" json:"-"`
+	Filepath        string
+	ChunkName       string
+	Score           float32  `gorm:"-" json:"score,omitempty"`
+	KeywordScore    float32  `gorm:"-" json:"keyword_score,omitempty"`
+	HybridScore     float32  `gorm:"-" json:"hybrid_score,omitempty"`
+	RetrievalSource string   `gorm:"-" json:"retrieval_source,omitempty"`
+	Document        Document `gorm:"foreignKey:DocID;references:ID" swaggerignore:"true" json:"-"`
+	Chat            Chat     `gorm:"foreignKey:ChatID;references:ID" swaggerignore:"true" json:"-"`
 }
 
 // Настройки чата

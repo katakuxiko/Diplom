@@ -122,3 +122,31 @@ type EvaluationBaselineCompareResponse struct {
 	BaselineAvgSearchMs    float64   `json:"baseline_avg_search_ms"`
 	BaselineP95SearchMs    int64     `json:"baseline_p95_search_ms"`
 }
+
+type RetrievalCalibrationResponse struct {
+	RunID                        uuid.UUID `json:"run_id"`
+	TopK                         int       `json:"top_k"`
+	SamplesTotal                 int       `json:"samples_total"`
+	SamplesUsed                  int       `json:"samples_used"`
+	RecommendedMaxCosineDistance float32   `json:"recommended_max_cosine_distance"`
+	RecommendedMaxDistanceGap    float32   `json:"recommended_max_distance_gap"`
+	Accuracy                     float64   `json:"accuracy"`
+	Precision                    float64   `json:"precision"`
+	Recall                       float64   `json:"recall"`
+	F1                           float64   `json:"f1"`
+	TruePositive                 int       `json:"true_positive"`
+	TrueNegative                 int       `json:"true_negative"`
+	FalsePositive                int       `json:"false_positive"`
+	FalseNegative                int       `json:"false_negative"`
+}
+
+type RetrievalCalibrationApplyResponse struct {
+	RunID             uuid.UUID                    `json:"run_id"`
+	ChatID            uuid.UUID                    `json:"chat_id"`
+	TopK              int                          `json:"top_k"`
+	Applied           bool                         `json:"applied"`
+	RetrievalMode     string                       `json:"retrieval_mode"`
+	MaxCosineDistance float32                      `json:"max_cosine_distance"`
+	MaxDistanceGap    float32                      `json:"max_distance_gap"`
+	Calibration       RetrievalCalibrationResponse `json:"calibration"`
+}

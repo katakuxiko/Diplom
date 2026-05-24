@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"github.com/katakuxiko/Diplom/internal/repository"
 	"github.com/katakuxiko/Diplom/internal/service"
 	"github.com/katakuxiko/Diplom/internal/utils"
+	"gorm.io/gorm"
 )
 
 // Handler хранит зависимости для обработчиков
@@ -273,21 +275,38 @@ func (h *Handler) AskQuestion(c *fiber.Ctx) error {
 				if settings.Temperature == 0 {
 					settings.Temperature = dbSettings.Temperature
 				}
+				if settings.RetrievalMode == "" {
+					settings.RetrievalMode = dbSettings.RetrievalMode
+				}
+				if settings.MaxCosineDistance == 0 {
+					settings.MaxCosineDistance = dbSettings.MaxCosineDistance
+				}
+				if settings.MaxDistanceGap == 0 {
+					settings.MaxDistanceGap = dbSettings.MaxDistanceGap
+				}
+				if settings.MinChunkChars == 0 {
+					settings.MinChunkChars = dbSettings.MinChunkChars
+				}
 			}
 		}
 	}
 
+	if modelName == "" {
+		modelName = settings.Model
+	}
+
 	// если модель указана, используем её; иначе — дефолт внутри LLMClient/Service
-	ans, ctxChunks, err := h.rag.Ask(req.Query, k, req.ChatID, settings, accessLevel)
+	ans, ctxChunks, diagnostics, err := h.rag.AskWithDiagnostics(req.Query, k, req.ChatID, settings, accessLevel)
 	if err != nil {
 		log.Printf("rag ask error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	return c.JSON(fiber.Map{
-		"answer":  ans,
-		"context": ctxChunks,
-		"model":   modelName,
+		"answer":                ans,
+		"context":               ctxChunks,
+		"model":                 modelName,
+		"retrieval_diagnostics": diagnostics,
 	})
 }
 
@@ -641,6 +660,18 @@ func (h *Handler) StartEvaluationRun(c *fiber.Ctx) error {
 				if settings.Temperature == 0 {
 					settings.Temperature = dbSettings.Temperature
 				}
+				if settings.RetrievalMode == "" {
+					settings.RetrievalMode = dbSettings.RetrievalMode
+				}
+				if settings.MaxCosineDistance == 0 {
+					settings.MaxCosineDistance = dbSettings.MaxCosineDistance
+				}
+				if settings.MaxDistanceGap == 0 {
+					settings.MaxDistanceGap = dbSettings.MaxDistanceGap
+				}
+				if settings.MinChunkChars == 0 {
+					settings.MinChunkChars = dbSettings.MinChunkChars
+				}
 			}
 		}
 	}
@@ -891,6 +922,174 @@ func (h *Handler) CompareRunWithBaseline(c *fiber.Ctx) error {
 	return c.JSON(resp)
 }
 
+func (h *Handler) CalibrateRunRetrieval(c *fiber.Ctx) error {
+	runID, err := uuid.Parse(c.Params("run_id"))
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid run_id"})
+	}
+
+	_, resp, err := h.buildRunRetrievalCalibration(c, runID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return c.Status(404).JSON(fiber.Map{"error": "run not found"})
+		}
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(resp)
+}
+
+func (h *Handler) ApplyRunRetrievalCalibration(c *fiber.Ctx) error {
+	runID, err := uuid.Parse(c.Params("run_id"))
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid run_id"})
+	}
+
+	if h.chatSettings == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "chat settings service is not configured"})
+	}
+
+	run, calibration, err := h.buildRunRetrievalCalibration(c, runID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return c.Status(404).JSON(fiber.Map{"error": "run not found"})
+		}
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	ctx := context.Background()
+	chatSettings, err := h.chatSettings.GetByChatID(ctx, run.ChatID)
+	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+		chatSettings = &models.ChatSetting{ChatID: run.ChatID, Settings: models.JSONB{}}
+	}
+
+	if chatSettings.Settings == nil {
+		chatSettings.Settings = make(models.JSONB)
+	}
+
+	chatSettings.Settings["maxCosineDistance"] = calibration.RecommendedMaxCosineDistance
+	chatSettings.Settings["maxDistanceGap"] = calibration.RecommendedMaxDistanceGap
+
+	mode, _ := chatSettings.Settings["retrievalMode"].(string)
+	if strings.TrimSpace(mode) == "" {
+		chatSettings.Settings["retrievalMode"] = "hybrid"
+		mode = "hybrid"
+	}
+	if _, ok := chatSettings.Settings["minChunkChars"]; !ok {
+		chatSettings.Settings["minChunkChars"] = 50
+	}
+
+	chatSettings.Settings["retrievalCalibrationRunId"] = calibration.RunID.String()
+	chatSettings.Settings["retrievalCalibrationAppliedAt"] = time.Now().UTC().Format(time.RFC3339)
+
+	if err := h.chatSettings.CreateOrUpdate(ctx, chatSettings); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(dto.RetrievalCalibrationApplyResponse{
+		RunID:             calibration.RunID,
+		ChatID:            run.ChatID,
+		TopK:              calibration.TopK,
+		Applied:           true,
+		RetrievalMode:     mode,
+		MaxCosineDistance: calibration.RecommendedMaxCosineDistance,
+		MaxDistanceGap:    calibration.RecommendedMaxDistanceGap,
+		Calibration:       calibration,
+	})
+}
+
+func (h *Handler) buildRunRetrievalCalibration(c *fiber.Ctx, runID uuid.UUID) (*models.EvaluationRun, dto.RetrievalCalibrationResponse, error) {
+	run, err := h.evaluation.GetRunByID(context.Background(), runID)
+	if err != nil {
+		return nil, dto.RetrievalCalibrationResponse{}, err
+	}
+
+	topK := c.QueryInt("top_k", run.TopK)
+	if topK <= 0 {
+		topK = 5
+	}
+
+	accessLevel := 100
+	if v := c.Locals("user"); v != nil {
+		if claims, ok := v.(jwt.MapClaims); ok {
+			if role, ok := claims["role"].(string); ok && role == "chat_user" {
+				if al, ok := claims["access_level"].(float64); ok {
+					accessLevel = int(al)
+				}
+			}
+		}
+	}
+
+	candidateLimit := topK * 3
+	if candidateLimit > 30 {
+		candidateLimit = 30
+	}
+
+	samples := make([]retrievalCalibrationSample, 0, len(run.Results))
+	for _, result := range run.Results {
+		questionText := strings.TrimSpace(result.Question.Text)
+		if questionText == "" {
+			continue
+		}
+
+		emb, embErr := h.llm.EmbeddingWithSettings(questionText, nil)
+		if embErr != nil {
+			log.Printf("calibration embedding error run=%s question=%s: %v", run.ID, result.Question.ID, embErr)
+			continue
+		}
+
+		chunks, searchErr := h.chunkService.SearchSimilar(emb, candidateLimit, run.ChatID, accessLevel)
+		if searchErr != nil {
+			log.Printf("calibration search error run=%s question=%s: %v", run.ID, result.Question.ID, searchErr)
+			continue
+		}
+
+		samples = append(samples, retrievalCalibrationSample{
+			ExpectedNoAnswer: result.Question.ExpectedNoAnswer,
+			Candidates:       chunks,
+		})
+	}
+
+	if len(samples) == 0 {
+		return nil, dto.RetrievalCalibrationResponse{}, fmt.Errorf("unable to build calibration dataset for run")
+	}
+
+	distanceGrid := []float32{0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80}
+	gapGrid := []float32{0.08, 0.10, 0.12, 0.15, 0.18, 0.22, 0.26, 0.30}
+
+	best := retrievalCalibrationMetrics{Accuracy: -1}
+	for _, maxCosDist := range distanceGrid {
+		for _, maxGap := range gapGrid {
+			current := evaluateRetrievalCalibration(h.rag, samples, topK, maxCosDist, maxGap)
+			if current.Accuracy > best.Accuracy || (current.Accuracy == best.Accuracy && current.F1 > best.F1) {
+				best = current
+			}
+		}
+	}
+
+	resp := dto.RetrievalCalibrationResponse{
+		RunID:                        run.ID,
+		TopK:                         topK,
+		SamplesTotal:                 len(run.Results),
+		SamplesUsed:                  len(samples),
+		RecommendedMaxCosineDistance: best.MaxCosineDistance,
+		RecommendedMaxDistanceGap:    best.MaxDistanceGap,
+		Accuracy:                     best.Accuracy,
+		Precision:                    best.Precision,
+		Recall:                       best.Recall,
+		F1:                           best.F1,
+		TruePositive:                 best.TruePositive,
+		TrueNegative:                 best.TrueNegative,
+		FalsePositive:                best.FalsePositive,
+		FalseNegative:                best.FalseNegative,
+	}
+
+	return run, resp, nil
+}
+
 func mapTestQuestionToDTO(q models.TestQuestion) dto.TestQuestionResponse {
 	return dto.TestQuestionResponse{
 		ID:               q.ID,
@@ -1031,4 +1230,63 @@ func percentile95(values []int64) int64 {
 		idx = len(values) - 1
 	}
 	return values[idx]
+}
+
+type retrievalCalibrationSample struct {
+	ExpectedNoAnswer bool
+	Candidates       []models.Chunk
+}
+
+type retrievalCalibrationMetrics struct {
+	MaxCosineDistance float32
+	MaxDistanceGap    float32
+	TruePositive      int
+	TrueNegative      int
+	FalsePositive     int
+	FalseNegative     int
+	Accuracy          float64
+	Precision         float64
+	Recall            float64
+	F1                float64
+}
+
+func evaluateRetrievalCalibration(rag *service.RAGService, samples []retrievalCalibrationSample, topK int, maxCosineDistance, maxDistanceGap float32) retrievalCalibrationMetrics {
+	tuning := &models.AskSettings{
+		MaxCosineDistance: maxCosineDistance,
+		MaxDistanceGap:    maxDistanceGap,
+	}
+
+	metrics := retrievalCalibrationMetrics{
+		MaxCosineDistance: maxCosineDistance,
+		MaxDistanceGap:    maxDistanceGap,
+	}
+
+	for _, sample := range samples {
+		filtered := rag.ApplyRetrievalThresholds(sample.Candidates, topK, tuning)
+		predictedNoAnswer := len(filtered) == 0
+
+		expectedAnswer := !sample.ExpectedNoAnswer
+		predictedAnswer := !predictedNoAnswer
+
+		switch {
+		case expectedAnswer && predictedAnswer:
+			metrics.TruePositive++
+		case !expectedAnswer && !predictedAnswer:
+			metrics.TrueNegative++
+		case !expectedAnswer && predictedAnswer:
+			metrics.FalsePositive++
+		case expectedAnswer && !predictedAnswer:
+			metrics.FalseNegative++
+		}
+	}
+
+	total := metrics.TruePositive + metrics.TrueNegative + metrics.FalsePositive + metrics.FalseNegative
+	metrics.Accuracy = safeRate(float64(metrics.TruePositive+metrics.TrueNegative), float64(total))
+	metrics.Precision = safeRate(float64(metrics.TruePositive), float64(metrics.TruePositive+metrics.FalsePositive))
+	metrics.Recall = safeRate(float64(metrics.TruePositive), float64(metrics.TruePositive+metrics.FalseNegative))
+	if metrics.Precision+metrics.Recall > 0 {
+		metrics.F1 = 2 * metrics.Precision * metrics.Recall / (metrics.Precision + metrics.Recall)
+	}
+
+	return metrics
 }

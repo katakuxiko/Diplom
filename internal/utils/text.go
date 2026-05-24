@@ -34,9 +34,12 @@ func NormalizeText(s string) string {
 
 // TruncateByChars ensures the string length does not exceed max characters.
 func TruncateByChars(s string, max int) string {
-	if max <= 0 || len(s) <= max {
+	if max <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= max {
 		return s
 	}
-	// simple byte-based truncation is fine for ASCII-heavy text; runes if needed
-	return s[:max]
+	return string(r[:max])
 }

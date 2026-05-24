@@ -30,12 +30,12 @@ func (r *ChunkRepository) FindByDocID(docID string) ([]models.Chunk, error) {
 func (r *ChunkRepository) SearchByVector(vec pgvector.Vector, limit int, chatID uuid.UUID, accessLevel int) ([]models.Chunk, error) {
 	var chunks []models.Chunk
 	err := r.db.Raw(`
-		SELECT c.* FROM chunks c
+		SELECT c.*, (c.embedding <=> ?) AS score FROM chunks c
 		JOIN documents d ON d.id = c.doc_id
 		WHERE c.chat_id = ? AND d.access_level <= ?
-		ORDER BY c.embedding <-> ?
+		ORDER BY c.embedding <=> ?
 		LIMIT ?
-	`, chatID, accessLevel, vec, limit).Scan(&chunks).Error
+	`, vec, chatID, accessLevel, vec, limit).Scan(&chunks).Error
 	return chunks, err
 }
 
