@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/katakuxiko/Diplom/internal/config"
 	"github.com/katakuxiko/Diplom/internal/models"
@@ -32,6 +33,9 @@ const (
 	historyMessageMaxChars   = 1200
 	defaultHistoryCharBudget = 3500
 	maxHistoryCharBudget     = 7000
+	maxTranslateTokens       = 128
+	translateQueryPrompt     = "You rewrite a user search query into concise Russian for retrieval over Russian documents. Preserve names, abbreviations, numbers, dates, and domain terms. Return only the rewritten Russian query without explanations."
+	answerLanguageConstraint = "Answer strictly in the same language as the user's question. Do not switch language unless the user explicitly requests it."
 )
 
 func createChatCompletionWithContinuation(client *openai.Client, req openai.ChatCompletionRequest) (string, error) {
@@ -176,6 +180,81 @@ func buildAnswerMessages(systemPrompt, userPrompt string, settings *models.AskSe
 
 	messages = append(messages, openai.ChatCompletionMessage{Role: "user", Content: userPrompt})
 	return messages
+}
+
+func isLikelyEnglishQuery(query string) bool {
+	latinCount := 0
+	cyrillicCount := 0
+
+	for _, r := range query {
+		if unicode.In(r, unicode.Latin) {
+			latinCount++
+		}
+		if unicode.In(r, unicode.Cyrillic) {
+			cyrillicCount++
+		}
+	}
+
+	return latinCount > 0 && cyrillicCount == 0
+}
+
+func localizedStaticReply(query, ru, en string) string {
+	if isLikelyEnglishQuery(query) {
+		return en
+	}
+	return ru
+}
+
+func buildLanguageAwareUserPrompt(contextText, query string) string {
+	return fmt.Sprintf(
+		"RESPONSE LANGUAGE RULE:\n%s\n\nCONTEXT:\n%s\n\nQUESTION:\n%s\n\nANSWER:",
+		answerLanguageConstraint,
+		contextText,
+		query,
+	)
+}
+
+// TranslateQueryToRussianForRetrieval переводит короткий запрос на русский для fallback retrieval.
+// Используется только когда поиск по исходному запросу не вернул релевантных чанков.
+func (l *LLMClient) TranslateQueryToRussianForRetrieval(query string, settings *models.AskSettings) (string, error) {
+	input := strings.TrimSpace(query)
+	if input == "" {
+		return "", nil
+	}
+
+	modelName := l.chatName
+	if settings != nil && strings.TrimSpace(settings.Model) != "" {
+		modelName = settings.Model
+	}
+
+	client := l.clientForSettings(settings)
+	req := openai.ChatCompletionRequest{
+		Model: modelName,
+		Messages: []openai.ChatCompletionMessage{
+			{Role: "system", Content: translateQueryPrompt},
+			{Role: "user", Content: input},
+		},
+		Temperature:     0,
+		TopP:            1,
+		MaxTokens:       maxTranslateTokens,
+		PresencePenalty: 0,
+	}
+	if effort := reasoningEffortForModel(modelName); effort != "" {
+		req.ReasoningEffort = effort
+	}
+
+	resp, err := client.CreateChatCompletion(context.Background(), req)
+	if err != nil {
+		return "", err
+	}
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("LLM translation returned empty response")
+	}
+
+	translated := strings.TrimSpace(resp.Choices[0].Message.Content)
+	translated = strings.Trim(translated, "\"'")
+	translated = strings.TrimSpace(translated)
+	return translated, nil
 }
 
 func reasoningEffortForModel(modelName string) string {
@@ -532,12 +611,20 @@ func (l *LLMClient) Ask(query, contextText string, settings *models.AskSettings,
 	lowerQuery := strings.ToLower(strings.TrimSpace(query))
 	for _, greeting := range greetings {
 		if lowerQuery == greeting {
-			return "Привет! 👋 Я помогу найти информацию в загруженных документах. Задайте ваш вопрос.", nil
+			return localizedStaticReply(
+				query,
+				"Привет! 👋 Я помогу найти информацию в загруженных документах. Задайте ваш вопрос.",
+				"Hi! 👋 I can help you find information in the uploaded documents. Ask your question.",
+			), nil
 		}
 	}
 
 	if strings.TrimSpace(contextText) == "" {
-		return "К сожалению, в загруженных документах не найдено информации по вашему запросу. Попробуйте переформулировать вопрос или загрузите дополнительные материалы.", nil
+		return localizedStaticReply(
+			query,
+			"К сожалению, в загруженных документах не найдено информации по вашему запросу. Попробуйте переформулировать вопрос или загрузите дополнительные материалы.",
+			"Unfortunately, no relevant information was found in the uploaded documents for your request. Try rephrasing the question or upload additional materials.",
+		), nil
 	}
 
 	modelName := l.chatName
@@ -573,7 +660,7 @@ func (l *LLMClient) Ask(query, contextText string, settings *models.AskSettings,
 		}
 	}
 
-	userPrompt := fmt.Sprintf("КОНТЕКСТ:\n%s\n\nВОПРОС: %s\n\nОТВЕТ:", contextText, query)
+	userPrompt := buildLanguageAwareUserPrompt(contextText, query)
 
 	req := openai.ChatCompletionRequest{
 		Model:           modelName,
@@ -596,12 +683,20 @@ func (l *LLMClient) AskWithSettings(query, contextText string, settings *models.
 	lowerQuery := strings.ToLower(strings.TrimSpace(query))
 	for _, greeting := range greetings {
 		if lowerQuery == greeting {
-			return "Привет! 👋 Я помогу найти информацию в загруженных документах. Задайте ваш вопрос.", nil
+			return localizedStaticReply(
+				query,
+				"Привет! 👋 Я помогу найти информацию в загруженных документах. Задайте ваш вопрос.",
+				"Hi! 👋 I can help you find information in the uploaded documents. Ask your question.",
+			), nil
 		}
 	}
 
 	if strings.TrimSpace(contextText) == "" {
-		return "К сожалению, в загруженных документах не найдено информации по вашему запросу. Попробуйте переформулировать вопрос или загрузите дополнительные материалы.", nil
+		return localizedStaticReply(
+			query,
+			"К сожалению, в загруженных документах не найдено информации по вашему запросу. Попробуйте переформулировать вопрос или загрузите дополнительные материалы.",
+			"Unfortunately, no relevant information was found in the uploaded documents for your request. Try rephrasing the question or upload additional materials.",
+		), nil
 	}
 
 	modelName := l.chatName
@@ -637,7 +732,7 @@ func (l *LLMClient) AskWithSettings(query, contextText string, settings *models.
 		}
 	}
 
-	userPrompt := fmt.Sprintf("КОНТЕКСТ:\n%s\n\nВОПРОС: %s\n\nОТВЕТ:", contextText, query)
+	userPrompt := buildLanguageAwareUserPrompt(contextText, query)
 
 	client := l.clientForSettings(settings)
 

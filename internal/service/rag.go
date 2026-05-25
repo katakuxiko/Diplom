@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"time"
@@ -21,6 +22,9 @@ type RAGService struct {
 
 type RetrievalDiagnostics struct {
 	RetrievalMode     string  `json:"retrieval_mode"`
+	RetrievalQuery    string  `json:"retrieval_query,omitempty"`
+	FallbackUsed      bool    `json:"fallback_used"`
+	FallbackQuery     string  `json:"fallback_query,omitempty"`
 	TopK              int     `json:"top_k"`
 	ExpandedTopK      int     `json:"expanded_top_k"`
 	VectorCandidates  int     `json:"vector_candidates"`
@@ -64,70 +68,35 @@ func (s *RAGService) AskWithDiagnostics(query string, topK int, chatID uuid.UUID
 		topK = defaultTopK
 	}
 	diagnostics.TopK = topK
+	diagnostics.RetrievalQuery = strings.TrimSpace(query)
 
-	retrievalMode := resolveRetrievalMode(settings)
-	diagnostics.RetrievalMode = retrievalMode
-	expandedTopK := topK * 2
-	if retrievalMode == "hybrid" {
-		expandedTopK = topK * 3
-	}
-	if expandedTopK > maxExpandedCandidates {
-		expandedTopK = maxExpandedCandidates
-	}
-	if expandedTopK < topK {
-		expandedTopK = topK
-	}
-	diagnostics.ExpandedTopK = expandedTopK
-
-	minChunkChars, maxCosineDistance, maxDistanceGap := resolveRetrievalThresholds(settings)
-	diagnostics.MinChunkChars = minChunkChars
-	diagnostics.MaxCosineDistance = maxCosineDistance
-	diagnostics.MaxDistanceGap = maxDistanceGap
-
-	var vectorChunks []models.Chunk
-	if retrievalMode != "keyword" {
-		v, embErr := s.llm.EmbeddingWithSettings(query, settings)
-		if embErr != nil {
-			return "", nil, diagnostics, fmt.Errorf("embedding error: %w", embErr)
-		}
-		vec := pgvector.NewVector(v)
-
-		vectorChunks, searchErr := s.ChunkRepository.SearchByVector(vec, expandedTopK, chatID, accessLevel)
-		if searchErr != nil {
-			return "", nil, diagnostics, fmt.Errorf("search error: %w", searchErr)
-		}
-		for i := range vectorChunks {
-			vectorChunks[i].RetrievalSource = "vector"
-			vectorChunks[i].HybridScore = cosineDistanceToSimilarity(vectorChunks[i].Score)
-		}
-		diagnostics.VectorCandidates = len(vectorChunks)
+	filteredChunks, retrieveErr := s.retrieveChunksForQuery(query, topK, chatID, settings, accessLevel, &diagnostics)
+	if retrieveErr != nil {
+		return "", nil, diagnostics, retrieveErr
 	}
 
-	var candidates []models.Chunk
-	switch retrievalMode {
-	case "vector":
-		candidates = vectorChunks
-	case "keyword":
-		keywordChunks, kErr := s.ChunkRepository.SearchByKeyword(query, expandedTopK, chatID, accessLevel)
-		if kErr != nil {
-			return "", nil, diagnostics, fmt.Errorf("keyword search error: %w", kErr)
+	if len(filteredChunks) == 0 && shouldTryRussianFallback(query) && s.llm != nil {
+		translatedQuery, translateErr := s.llm.TranslateQueryToRussianForRetrieval(query, settings)
+		if translateErr != nil {
+			log.Printf("retrieval translation fallback failed: %v", translateErr)
+		} else {
+			translatedQuery = strings.TrimSpace(translatedQuery)
+			if translatedQuery != "" && !sameNormalizedQuery(query, translatedQuery) {
+				fallbackDiagnostics := RetrievalDiagnostics{TopK: topK, RetrievalQuery: translatedQuery}
+				fallbackChunks, fallbackErr := s.retrieveChunksForQuery(translatedQuery, topK, chatID, settings, accessLevel, &fallbackDiagnostics)
+				if fallbackErr != nil {
+					log.Printf("retrieval fallback search failed: %v", fallbackErr)
+				} else if len(fallbackChunks) > 0 {
+					fallbackDiagnostics.FallbackUsed = true
+					fallbackDiagnostics.FallbackQuery = translatedQuery
+					diagnostics = fallbackDiagnostics
+					filteredChunks = fallbackChunks
+				} else {
+					diagnostics.FallbackQuery = translatedQuery
+				}
+			}
 		}
-		diagnostics.KeywordCandidates = len(keywordChunks)
-		candidates = s.rankKeywordCandidates(query, keywordChunks)
-	default:
-		keywordChunks, kErr := s.ChunkRepository.SearchByKeyword(query, expandedTopK, chatID, accessLevel)
-		if kErr != nil {
-			return "", nil, diagnostics, fmt.Errorf("keyword search error: %w", kErr)
-		}
-		diagnostics.KeywordCandidates = len(keywordChunks)
-		keywordChunks = s.rankKeywordCandidates(query, keywordChunks)
-		candidates = s.mergeHybridCandidates(query, vectorChunks, keywordChunks, expandedTopK*2)
 	}
-	diagnostics.CandidatesTotal = len(candidates)
-
-	// Фильтруем чанки по порогам релевантности
-	filteredChunks := s.filterRelevantChunks(candidates, topK, settings)
-	diagnostics.SelectedChunks = len(filteredChunks)
 
 	// Если после фильтрации не осталось чанков
 	if len(filteredChunks) == 0 {
@@ -188,6 +157,114 @@ func (s *RAGService) AskWithDiagnostics(query string, topK int, chatID uuid.UUID
 	}
 
 	return answer, filteredChunks, diagnostics, nil
+}
+
+func (s *RAGService) retrieveChunksForQuery(query string, topK int, chatID uuid.UUID, settings *models.AskSettings, accessLevel int, diagnostics *RetrievalDiagnostics) ([]models.Chunk, error) {
+	if diagnostics == nil {
+		return nil, fmt.Errorf("diagnostics is nil")
+	}
+
+	if topK <= 0 {
+		topK = defaultTopK
+	}
+	diagnostics.TopK = topK
+
+	retrievalMode := resolveRetrievalMode(settings)
+	diagnostics.RetrievalMode = retrievalMode
+
+	expandedTopK := topK * 2
+	if retrievalMode == "hybrid" {
+		expandedTopK = topK * 3
+	}
+	if expandedTopK > maxExpandedCandidates {
+		expandedTopK = maxExpandedCandidates
+	}
+	if expandedTopK < topK {
+		expandedTopK = topK
+	}
+	diagnostics.ExpandedTopK = expandedTopK
+
+	minChunkChars, maxCosineDistance, maxDistanceGap := resolveRetrievalThresholds(settings)
+	diagnostics.MinChunkChars = minChunkChars
+	diagnostics.MaxCosineDistance = maxCosineDistance
+	diagnostics.MaxDistanceGap = maxDistanceGap
+
+	var vectorChunks []models.Chunk
+	if retrievalMode != "keyword" {
+		v, embErr := s.llm.EmbeddingWithSettings(query, settings)
+		if embErr != nil {
+			return nil, fmt.Errorf("embedding error: %w", embErr)
+		}
+		vec := pgvector.NewVector(v)
+
+		vectorResult, searchErr := s.ChunkRepository.SearchByVector(vec, expandedTopK, chatID, accessLevel)
+		if searchErr != nil {
+			return nil, fmt.Errorf("search error: %w", searchErr)
+		}
+		for i := range vectorResult {
+			vectorResult[i].RetrievalSource = "vector"
+			vectorResult[i].HybridScore = cosineDistanceToSimilarity(vectorResult[i].Score)
+		}
+		vectorChunks = vectorResult
+		diagnostics.VectorCandidates = len(vectorChunks)
+	} else {
+		diagnostics.VectorCandidates = 0
+	}
+
+	var candidates []models.Chunk
+	switch retrievalMode {
+	case "vector":
+		candidates = vectorChunks
+		diagnostics.KeywordCandidates = 0
+	case "keyword":
+		keywordChunks, kErr := s.ChunkRepository.SearchByKeyword(query, expandedTopK, chatID, accessLevel)
+		if kErr != nil {
+			return nil, fmt.Errorf("keyword search error: %w", kErr)
+		}
+		diagnostics.KeywordCandidates = len(keywordChunks)
+		candidates = s.rankKeywordCandidates(query, keywordChunks)
+	default:
+		keywordChunks, kErr := s.ChunkRepository.SearchByKeyword(query, expandedTopK, chatID, accessLevel)
+		if kErr != nil {
+			return nil, fmt.Errorf("keyword search error: %w", kErr)
+		}
+		diagnostics.KeywordCandidates = len(keywordChunks)
+		keywordChunks = s.rankKeywordCandidates(query, keywordChunks)
+		candidates = s.mergeHybridCandidates(query, vectorChunks, keywordChunks, expandedTopK*2)
+	}
+
+	diagnostics.CandidatesTotal = len(candidates)
+	filteredChunks := s.filterRelevantChunks(candidates, topK, settings)
+	diagnostics.SelectedChunks = len(filteredChunks)
+
+	return filteredChunks, nil
+}
+
+func shouldTryRussianFallback(query string) bool {
+	q := strings.TrimSpace(strings.ToLower(query))
+	if q == "" {
+		return false
+	}
+
+	latinCount := 0
+	cyrillicCount := 0
+	for _, r := range q {
+		if unicode.In(r, unicode.Latin) {
+			latinCount++
+		}
+		if unicode.In(r, unicode.Cyrillic) {
+			cyrillicCount++
+		}
+	}
+
+	return latinCount >= 3 && cyrillicCount == 0
+}
+
+func sameNormalizedQuery(a, b string) bool {
+	normalize := func(v string) string {
+		return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(v)), " "))
+	}
+	return normalize(a) == normalize(b)
 }
 
 func resolveRetrievalMode(settings *models.AskSettings) string {
