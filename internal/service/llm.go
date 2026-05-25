@@ -182,11 +182,11 @@ func buildAnswerMessages(systemPrompt, userPrompt string, settings *models.AskSe
 	return messages
 }
 
-func isLikelyEnglishQuery(query string) bool {
-	latinCount := 0
-	cyrillicCount := 0
-
+func scriptLetterCounts(query string) (latinCount, cyrillicCount int) {
 	for _, r := range query {
+		if !unicode.IsLetter(r) {
+			continue
+		}
 		if unicode.In(r, unicode.Latin) {
 			latinCount++
 		}
@@ -194,8 +194,48 @@ func isLikelyEnglishQuery(query string) bool {
 			cyrillicCount++
 		}
 	}
+	return latinCount, cyrillicCount
+}
 
-	return latinCount > 0 && cyrillicCount == 0
+func detectPrimaryQuestionLanguage(query string) string {
+	latinCount, cyrillicCount := scriptLetterCounts(query)
+
+	switch {
+	case latinCount >= 3 && latinCount >= cyrillicCount*2:
+		return "en"
+	case cyrillicCount >= 3 && cyrillicCount >= latinCount*2:
+		return "ru"
+	case latinCount > 0 && cyrillicCount == 0:
+		return "en"
+	case cyrillicCount > 0 && latinCount == 0:
+		return "ru"
+	default:
+		return "same"
+	}
+}
+
+func isLikelyEnglishQuery(query string) bool {
+	return detectPrimaryQuestionLanguage(query) == "en"
+}
+
+func buildLanguagePolicyInstruction(query string) string {
+	switch detectPrimaryQuestionLanguage(query) {
+	case "en":
+		return "LANGUAGE POLICY:\nYou MUST answer in English. Do not answer in Russian unless the user explicitly asks for Russian."
+	case "ru":
+		return "ПРАВИЛО ЯЗЫКА ОТВЕТА:\nВы ДОЛЖНЫ отвечать на русском языке. Не переходите на английский без явной просьбы пользователя."
+	default:
+		return "LANGUAGE POLICY:\n" + answerLanguageConstraint
+	}
+}
+
+func applyLanguagePolicyToSystemPrompt(systemPrompt, query string) string {
+	policy := strings.TrimSpace(buildLanguagePolicyInstruction(query))
+	base := strings.TrimSpace(systemPrompt)
+	if base == "" {
+		return policy
+	}
+	return base + "\n\n" + policy
 }
 
 func localizedStaticReply(query, ru, en string) string {
@@ -207,8 +247,8 @@ func localizedStaticReply(query, ru, en string) string {
 
 func buildLanguageAwareUserPrompt(contextText, query string) string {
 	return fmt.Sprintf(
-		"RESPONSE LANGUAGE RULE:\n%s\n\nCONTEXT:\n%s\n\nQUESTION:\n%s\n\nANSWER:",
-		answerLanguageConstraint,
+		"%s\n\nCONTEXT:\n%s\n\nQUESTION:\n%s\n\nANSWER:",
+		buildLanguagePolicyInstruction(query),
 		contextText,
 		query,
 	)
@@ -660,6 +700,8 @@ func (l *LLMClient) Ask(query, contextText string, settings *models.AskSettings,
 		}
 	}
 
+	systemPrompt = applyLanguagePolicyToSystemPrompt(systemPrompt, query)
+
 	userPrompt := buildLanguageAwareUserPrompt(contextText, query)
 
 	req := openai.ChatCompletionRequest{
@@ -731,6 +773,8 @@ func (l *LLMClient) AskWithSettings(query, contextText string, settings *models.
 			temperature = settings.Temperature
 		}
 	}
+
+	systemPrompt = applyLanguagePolicyToSystemPrompt(systemPrompt, query)
 
 	userPrompt := buildLanguageAwareUserPrompt(contextText, query)
 
