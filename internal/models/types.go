@@ -34,6 +34,13 @@ type AskRequest struct {
 	Settings      *AskSettings `json:"settings,omitempty"`
 }
 
+// ChatContextMessage хранит краткую историю диалога для генерации ответа в LLM.
+// Используется только как дополнительный контекст и передаётся в ограниченном объёме.
+type ChatContextMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
 type Rule struct {
 	ID          int    `json:"id" db:"id"`
 	Name        string `json:"name" db:"name"`

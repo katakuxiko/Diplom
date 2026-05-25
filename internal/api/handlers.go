@@ -36,6 +36,12 @@ type Handler struct {
 	evaluation      *service.EvaluationService
 }
 
+const (
+	llmHistoryFetchLimit      = 30
+	llmHistoryMaxMessages     = 8
+	llmHistoryMessageMaxChars = 1200
+)
+
 // NewHandler конструктор
 func NewHandler(rag *service.RAGService, llm *service.LLMClient, chunkService *service.ChunkService, chatSettings *service.ChatSettingsService, chatHistoryRepo *repository.ChatHistoryRepository, messageRepo *repository.MessageRepository, evaluation *service.EvaluationService) *Handler {
 	return &Handler{rag: rag, llm: llm, chunkService: chunkService, chatSettings: chatSettings, chatHistoryRepo: chatHistoryRepo, messageRepo: messageRepo, evaluation: evaluation}
@@ -311,8 +317,18 @@ func (h *Handler) AskQuestion(c *fiber.Ctx) error {
 		modelName = settings.Model
 	}
 
+	historyMessages := make([]models.ChatContextMessage, 0)
+	if settings.EnableHistory && req.ChatHistoryID != nil && h.messageRepo != nil {
+		loadedHistory, historyErr := h.buildLLMHistoryMessages(*req.ChatHistoryID, req.Query)
+		if historyErr != nil {
+			log.Printf("history load error chat_history_id=%s: %v", req.ChatHistoryID.String(), historyErr)
+		} else {
+			historyMessages = loadedHistory
+		}
+	}
+
 	// если модель указана, используем её; иначе — дефолт внутри LLMClient/Service
-	ans, ctxChunks, diagnostics, err := h.rag.AskWithDiagnostics(effectiveQuery, k, req.ChatID, settings, accessLevel)
+	ans, ctxChunks, diagnostics, err := h.rag.AskWithDiagnostics(effectiveQuery, k, req.ChatID, settings, accessLevel, historyMessages)
 	if err != nil {
 		log.Printf("rag ask error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
@@ -323,6 +339,8 @@ func (h *Handler) AskQuestion(c *fiber.Ctx) error {
 		"context":               ctxChunks,
 		"model":                 modelName,
 		"retrieval_diagnostics": diagnostics,
+		"history_used":          settings.EnableHistory && len(historyMessages) > 0,
+		"history_messages_used": len(historyMessages),
 		"continuation_resolved": continuationResolved,
 		"continuation_base_query": func() string {
 			if continuationResolved {
@@ -717,7 +735,7 @@ func (h *Handler) StartEvaluationRun(c *fiber.Ctx) error {
 	results := make([]models.EvaluationResult, 0, len(questions))
 	for _, question := range questions {
 		start := time.Now()
-		answer, chunks, askErr := h.rag.Ask(question.Text, topK, req.ChatID, settings, accessLevel)
+		answer, chunks, askErr := h.rag.Ask(question.Text, topK, req.ChatID, settings, accessLevel, nil)
 		duration := time.Since(start).Milliseconds()
 
 		retrieved := ""
@@ -1312,6 +1330,75 @@ func evaluateRetrievalCalibration(rag *service.RAGService, samples []retrievalCa
 	}
 
 	return metrics
+}
+
+func normalizeChatContextRole(role string) (string, bool) {
+	if isUserRole(role) {
+		return "user", true
+	}
+	if isAssistantRole(role) {
+		return "assistant", true
+	}
+	return "", false
+}
+
+func (h *Handler) buildLLMHistoryMessages(chatHistoryID uuid.UUID, currentQuery string) ([]models.ChatContextMessage, error) {
+	if h.messageRepo == nil {
+		return nil, nil
+	}
+
+	messages, err := h.messageRepo.GetRecentByChatHistoryID(chatHistoryID, llmHistoryFetchLimit)
+	if err != nil {
+		return nil, err
+	}
+	if len(messages) == 0 {
+		return nil, nil
+	}
+
+	for left, right := 0, len(messages)-1; left < right; left, right = left+1, right-1 {
+		messages[left], messages[right] = messages[right], messages[left]
+	}
+
+	history := make([]models.ChatContextMessage, 0, len(messages))
+	for _, msg := range messages {
+		role, ok := normalizeChatContextRole(msg.Role)
+		if !ok {
+			continue
+		}
+
+		text := strings.TrimSpace(msg.Text)
+		if text == "" {
+			continue
+		}
+
+		history = append(history, models.ChatContextMessage{
+			Role:    role,
+			Content: utils.TruncateByChars(text, llmHistoryMessageMaxChars),
+		})
+	}
+
+	if len(history) == 0 {
+		return nil, nil
+	}
+
+	normalizedCurrent := normalizePrompt(strings.TrimSpace(currentQuery))
+	if normalizedCurrent != "" {
+		for i := len(history) - 1; i >= 0; i-- {
+			if history[i].Role != "user" {
+				continue
+			}
+			if normalizePrompt(history[i].Content) == normalizedCurrent {
+				history = append(history[:i], history[i+1:]...)
+			}
+			break
+		}
+	}
+
+	if len(history) > llmHistoryMaxMessages {
+		history = history[len(history)-llmHistoryMaxMessages:]
+	}
+
+	return history, nil
 }
 
 func (h *Handler) resolveContinuationFromHistory(chatHistoryID uuid.UUID) (string, string, error) {

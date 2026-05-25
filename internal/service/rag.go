@@ -52,12 +52,12 @@ func NewRAGService(ChunkRepository *repository.ChunkRepository, llm *LLMClient) 
 	return &RAGService{ChunkRepository: ChunkRepository, llm: llm}
 }
 
-func (s *RAGService) Ask(query string, topK int, chatID uuid.UUID, settings *models.AskSettings, accessLevel int) (string, []models.Chunk, error) {
-	answer, chunks, _, err := s.AskWithDiagnostics(query, topK, chatID, settings, accessLevel)
+func (s *RAGService) Ask(query string, topK int, chatID uuid.UUID, settings *models.AskSettings, accessLevel int, history []models.ChatContextMessage) (string, []models.Chunk, error) {
+	answer, chunks, _, err := s.AskWithDiagnostics(query, topK, chatID, settings, accessLevel, history)
 	return answer, chunks, err
 }
 
-func (s *RAGService) AskWithDiagnostics(query string, topK int, chatID uuid.UUID, settings *models.AskSettings, accessLevel int) (string, []models.Chunk, RetrievalDiagnostics, error) {
+func (s *RAGService) AskWithDiagnostics(query string, topK int, chatID uuid.UUID, settings *models.AskSettings, accessLevel int, history []models.ChatContextMessage) (string, []models.Chunk, RetrievalDiagnostics, error) {
 	diagnostics := RetrievalDiagnostics{}
 
 	if topK <= 0 {
@@ -181,7 +181,7 @@ func (s *RAGService) AskWithDiagnostics(query string, topK int, chatID uuid.UUID
 	ctx := b.String()
 
 	startTime := time.Now()
-	answer, err := s.llm.AskWithSettings(query, ctx, settings)
+	answer, err := s.llm.AskWithSettings(query, ctx, settings, history)
 	fmt.Printf("⏱️  LLM response time: %v\n", time.Since(startTime))
 	if err != nil {
 		return "", nil, diagnostics, fmt.Errorf("llm error: %w", err)

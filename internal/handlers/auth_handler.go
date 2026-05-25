@@ -36,16 +36,16 @@ func LoginHandler(svc *service.AdminService, cfg *config.Config) fiber.Handler {
 		admin, err := svc.GetByUsername(req.Username)
 		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).
-				JSON(fiber.Map{"error": "invalid credentials"})
+				JSON(fiber.Map{"error": "Неверный пароль"})
 		}
 		if admin == nil {
 			return c.Status(fiber.StatusUnauthorized).
-				JSON(fiber.Map{"error": "invalid credentials"})
+				JSON(fiber.Map{"error": "Неверный пароль"})
 		}
 
 		if !svc.CheckPassword(req.Password, admin.PasswordHash) {
 			return c.Status(fiber.StatusUnauthorized).
-				JSON(fiber.Map{"error": "invalid credentials"})
+				JSON(fiber.Map{"error": "Неверный пароль"})
 		}
 
 		role := "user"
@@ -108,11 +108,11 @@ func LoginChatUser(svc *service.ChatUserService, cfg *config.Config) fiber.Handl
 		user, err := svc.GetByUsernameAndChat(chatID, req.Username)
 		if err != nil || user == nil {
 			return c.Status(fiber.StatusUnauthorized).
-				JSON(fiber.Map{"error": "invalid credentials"})
+				JSON(fiber.Map{"error": "Неверный пароль"})
 		}
 		if !svc.CheckPassword(req.Password, user.PasswordHash) {
 			return c.Status(fiber.StatusUnauthorized).
-				JSON(fiber.Map{"error": "invalid credentials"})
+				JSON(fiber.Map{"error": "Неверный пароль"})
 		}
 
 		claims := jwt.MapClaims{

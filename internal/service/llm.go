@@ -28,6 +28,10 @@ type LLMClient struct {
 const (
 	maxAutoContinuationParts = 2
 	continuePrompt           = "Продолжи ответ с того места, где остановился. Не повторяй уже сказанное и сохрани структуру ответа."
+	maxHistoryMessages       = 8
+	historyMessageMaxChars   = 1200
+	defaultHistoryCharBudget = 3500
+	maxHistoryCharBudget     = 7000
 )
 
 func createChatCompletionWithContinuation(client *openai.Client, req openai.ChatCompletionRequest) (string, error) {
@@ -67,6 +71,111 @@ func createChatCompletionWithContinuation(client *openai.Client, req openai.Chat
 		return "", fmt.Errorf("LLM вернул пустой ответ")
 	}
 	return result, nil
+}
+
+func normalizeHistoryRole(role string) (string, bool) {
+	r := strings.ToLower(strings.TrimSpace(role))
+	switch r {
+	case "user":
+		return "user", true
+	case "assistant", "ai", "bot":
+		return "assistant", true
+	default:
+		return "", false
+	}
+}
+
+func truncateByRunes(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit])
+}
+
+func historyCharBudget(settings *models.AskSettings) int {
+	budget := defaultHistoryCharBudget
+	if settings != nil && settings.MaxTokens > 0 {
+		dynamic := settings.MaxTokens * 2
+		if dynamic > budget {
+			budget = dynamic
+		}
+	}
+	if budget > maxHistoryCharBudget {
+		budget = maxHistoryCharBudget
+	}
+	if budget < 1200 {
+		budget = 1200
+	}
+	return budget
+}
+
+func sanitizeHistoryMessages(history []models.ChatContextMessage, settings *models.AskSettings) []openai.ChatCompletionMessage {
+	if len(history) == 0 {
+		return nil
+	}
+	if settings != nil && !settings.EnableHistory {
+		return nil
+	}
+
+	budget := historyCharBudget(settings)
+	selected := make([]openai.ChatCompletionMessage, 0, maxHistoryMessages)
+	usedChars := 0
+
+	for i := len(history) - 1; i >= 0; i-- {
+		if len(selected) >= maxHistoryMessages || usedChars >= budget {
+			break
+		}
+
+		role, ok := normalizeHistoryRole(history[i].Role)
+		if !ok {
+			continue
+		}
+
+		content := strings.TrimSpace(history[i].Content)
+		if content == "" {
+			continue
+		}
+
+		content = truncateByRunes(content, historyMessageMaxChars)
+		pieceLen := len([]rune(content))
+		if usedChars+pieceLen > budget {
+			remaining := budget - usedChars
+			if remaining <= 0 {
+				break
+			}
+			content = strings.TrimSpace(truncateByRunes(content, remaining))
+			pieceLen = len([]rune(content))
+			if content == "" {
+				break
+			}
+		}
+
+		selected = append(selected, openai.ChatCompletionMessage{Role: role, Content: content})
+		usedChars += pieceLen
+	}
+
+	for left, right := 0, len(selected)-1; left < right; left, right = left+1, right-1 {
+		selected[left], selected[right] = selected[right], selected[left]
+	}
+
+	return selected
+}
+
+func buildAnswerMessages(systemPrompt, userPrompt string, settings *models.AskSettings, history []models.ChatContextMessage) []openai.ChatCompletionMessage {
+	messages := make([]openai.ChatCompletionMessage, 0, 2+maxHistoryMessages)
+	messages = append(messages, openai.ChatCompletionMessage{Role: "system", Content: systemPrompt})
+
+	historyMessages := sanitizeHistoryMessages(history, settings)
+	if len(historyMessages) > 0 {
+		messages = append(messages, historyMessages...)
+	}
+
+	messages = append(messages, openai.ChatCompletionMessage{Role: "user", Content: userPrompt})
+	return messages
 }
 
 func reasoningEffortForModel(modelName string) string {
@@ -418,7 +527,7 @@ func (l *LLMClient) EmbeddingWithSettings(text string, s *models.AskSettings) ([
 }
 
 // Ask выполняет RAG/LLM запрос с контекстом и настраиваемыми параметрами
-func (l *LLMClient) Ask(query, contextText string, settings *models.AskSettings) (string, error) {
+func (l *LLMClient) Ask(query, contextText string, settings *models.AskSettings, history []models.ChatContextMessage) (string, error) {
 	greetings := []string{"привет", "привет!", "здравствуй", "здравствуйте", "hi", "hello", "hey", "привета", "хай", "хелло"}
 	lowerQuery := strings.ToLower(strings.TrimSpace(query))
 	for _, greeting := range greetings {
@@ -468,7 +577,7 @@ func (l *LLMClient) Ask(query, contextText string, settings *models.AskSettings)
 
 	req := openai.ChatCompletionRequest{
 		Model:           modelName,
-		Messages:        []openai.ChatCompletionMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: userPrompt}},
+		Messages:        buildAnswerMessages(systemPrompt, userPrompt, settings, history),
 		Temperature:     temperature,
 		TopP:            0.9,
 		MaxTokens:       maxTokens,
@@ -482,7 +591,7 @@ func (l *LLMClient) Ask(query, contextText string, settings *models.AskSettings)
 }
 
 // AskWithSettings выполняет запрос к модели с учётом per-chat провайдера (локальный или внешний)
-func (l *LLMClient) AskWithSettings(query, contextText string, settings *models.AskSettings) (string, error) {
+func (l *LLMClient) AskWithSettings(query, contextText string, settings *models.AskSettings, history []models.ChatContextMessage) (string, error) {
 	greetings := []string{"привет", "привет!", "здравствуй", "здравствуйте", "hi", "hello", "hey", "привета", "хай", "хелло"}
 	lowerQuery := strings.ToLower(strings.TrimSpace(query))
 	for _, greeting := range greetings {
@@ -543,7 +652,7 @@ func (l *LLMClient) AskWithSettings(query, contextText string, settings *models.
 
 	req := openai.ChatCompletionRequest{
 		Model:           modelName,
-		Messages:        []openai.ChatCompletionMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: userPrompt}},
+		Messages:        buildAnswerMessages(systemPrompt, userPrompt, settings, history),
 		Temperature:     temperature,
 		TopP:            0.9,
 		MaxTokens:       maxTokens,
