@@ -83,12 +83,34 @@ func createChatCompletionStreamWithContinuation(client *openai.Client, req opena
 		return "", fmt.Errorf("stream callback is required")
 	}
 
+	streamStartedAt := time.Now()
+	log.Printf(
+		"LLM stream start: model=%s messages=%d max_tokens=%d temperature=%.3f top_p=%.3f",
+		req.Model,
+		len(req.Messages),
+		req.MaxTokens,
+		req.Temperature,
+		req.TopP,
+	)
+
 	parts := make([]string, 0, maxAutoContinuationParts+1)
 	workingReq := req
+	attemptsUsed := 0
+	totalDeltaChunks := 0
+	totalDeltaChars := 0
+	firstTokenLogged := false
 
 	for attempt := 0; attempt <= maxAutoContinuationParts; attempt++ {
+		attemptsUsed++
+		attemptStartedAt := time.Now()
+		attemptDeltaChunks := 0
+		attemptDeltaChars := 0
+		attemptFirstTokenAt := time.Time{}
+		log.Printf("LLM stream attempt=%d started: messages=%d", attempt+1, len(workingReq.Messages))
+
 		stream, err := client.CreateChatCompletionStream(context.Background(), workingReq)
 		if err != nil {
+			log.Printf("LLM stream attempt=%d init error: %v", attempt+1, err)
 			return "", err
 		}
 
@@ -118,9 +140,38 @@ func createChatCompletionStreamWithContinuation(client *openai.Client, req opena
 				continue
 			}
 
+			if attemptFirstTokenAt.IsZero() {
+				attemptFirstTokenAt = time.Now()
+				if !firstTokenLogged {
+					firstTokenLogged = true
+					log.Printf(
+						"LLM stream first token: attempt=%d latency=%s",
+						attempt+1,
+						attemptFirstTokenAt.Sub(streamStartedAt).Round(time.Millisecond),
+					)
+				}
+			}
+
+			deltaChars := len([]rune(delta))
+			attemptDeltaChunks++
+			attemptDeltaChars += deltaChars
+			totalDeltaChunks++
+			totalDeltaChars += deltaChars
+
+			if attemptDeltaChunks == 1 || attemptDeltaChunks%40 == 0 {
+				log.Printf(
+					"LLM stream attempt=%d progress: chunks=%d chars=%d elapsed=%s",
+					attempt+1,
+					attemptDeltaChunks,
+					attemptDeltaChars,
+					time.Since(attemptStartedAt).Round(time.Millisecond),
+				)
+			}
+
 			partBuilder.WriteString(delta)
 			if cbErr := onDelta(delta); cbErr != nil {
 				_ = stream.Close()
+				log.Printf("LLM stream attempt=%d callback error after chunks=%d: %v", attempt+1, attemptDeltaChunks, cbErr)
 				return "", cbErr
 			}
 		}
@@ -132,12 +183,38 @@ func createChatCompletionStreamWithContinuation(client *openai.Client, req opena
 			parts = append(parts, content)
 		}
 
+		effectiveFinishReason := finishReason
+		if effectiveFinishReason == "" {
+			effectiveFinishReason = "unknown"
+		}
+		if attemptFirstTokenAt.IsZero() {
+			log.Printf(
+				"LLM stream attempt=%d completed without content: finish_reason=%s elapsed=%s",
+				attempt+1,
+				effectiveFinishReason,
+				time.Since(attemptStartedAt).Round(time.Millisecond),
+			)
+		} else {
+			log.Printf(
+				"LLM stream attempt=%d completed: finish_reason=%s first_token=%s chunks=%d chars=%d content_chars=%d elapsed=%s",
+				attempt+1,
+				effectiveFinishReason,
+				attemptFirstTokenAt.Sub(attemptStartedAt).Round(time.Millisecond),
+				attemptDeltaChunks,
+				attemptDeltaChars,
+				len([]rune(content)),
+				time.Since(attemptStartedAt).Round(time.Millisecond),
+			)
+		}
+
 		if finishReason != "length" {
 			break
 		}
 		if attempt == maxAutoContinuationParts || content == "" {
 			break
 		}
+
+		log.Printf("LLM stream continuation requested: next_attempt=%d", attempt+2)
 
 		workingReq.Messages = append(workingReq.Messages,
 			openai.ChatCompletionMessage{Role: "assistant", Content: content},
@@ -146,6 +223,14 @@ func createChatCompletionStreamWithContinuation(client *openai.Client, req opena
 	}
 
 	result := strings.TrimSpace(strings.Join(parts, "\n"))
+	log.Printf(
+		"LLM stream finished: attempts=%d total_chunks=%d total_chars=%d result_chars=%d total_elapsed=%s",
+		attemptsUsed,
+		totalDeltaChunks,
+		totalDeltaChars,
+		len([]rune(result)),
+		time.Since(streamStartedAt).Round(time.Millisecond),
+	)
 	if result == "" {
 		return "", fmt.Errorf("LLM вернул пустой ответ")
 	}

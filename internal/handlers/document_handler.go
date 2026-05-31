@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/config"
 	"github.com/katakuxiko/Diplom/internal/middleware"
+	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/service"
 	"github.com/katakuxiko/Diplom/internal/utils"
 )
@@ -25,11 +26,12 @@ func RegisterDocumentRoutes(app *fiber.App, svc *service.DocumentService, cfgo *
 	r.Post("/", CreateDocument)
 	r.Get("/", GetDocuments)
 	r.Get("/:id", GetDocumentByID)
+	r.Get("/:id/download", DownloadDocument)
 	r.Delete("/:id", DeleteDocument)
 	r.Put("/:id/access", UpdateDocumentAccess)
 
-	// Публичный эндпоинт для скачивания (без JWT)
-	app.Get("/documents/:id/download", DownloadDocument)
+	// Публичный эндпоинт для скачивания документов с access_level=0 (без JWT)
+	app.Get("/public/documents/:id/download", DownloadPublicDocument)
 }
 
 // CreateDocument godoc
@@ -161,6 +163,56 @@ func DownloadDocument(c *fiber.Ctx) error {
 		log.Printf("Document not found: %v", err)
 		return c.Status(404).JSON(fiber.Map{"error": "document not found"})
 	}
+
+	if claims, ok := c.Locals("user").(jwt.MapClaims); ok {
+		if role, rok := claims["role"].(string); rok && role == "chat_user" {
+			accessLevel := 0
+			if al, aok := claims["access_level"].(float64); aok {
+				accessLevel = int(al)
+			}
+
+			if doc.AccessLevel > accessLevel {
+				return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
+			}
+		}
+	}
+
+	return sendDocumentFile(c, doc)
+}
+
+// DownloadPublicDocument godoc
+// @Summary      Скачать публичный файл документа
+// @Description  Возвращает файл документа для скачивания без JWT только если access_level == 0
+// @Tags         documents
+// @Param        id path string true "Document ID"
+// @Produce      application/pdf
+// @Success      200 {file} binary
+// @Failure      400 {object} map[string]string
+// @Failure      403 {object} map[string]string
+// @Failure      404 {object} map[string]string
+// @Failure      500 {object} map[string]string
+// @Router       /public/documents/{id}/download [get]
+func DownloadPublicDocument(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		log.Printf("Invalid document ID: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "invalid id"})
+	}
+
+	doc, err := documentService.GetFile(id)
+	if err != nil {
+		log.Printf("Document not found: %v", err)
+		return c.Status(404).JSON(fiber.Map{"error": "document not found"})
+	}
+
+	if doc.AccessLevel != 0 {
+		return c.Status(403).JSON(fiber.Map{"error": "document is not public"})
+	}
+
+	return sendDocumentFile(c, doc)
+}
+
+func sendDocumentFile(c *fiber.Ctx, doc *models.Document) error {
 
 	// Получаем файл из MinIO через storage
 	file, _, contentType, err := cfg.MinioStorage.GetFile(doc.Path)
