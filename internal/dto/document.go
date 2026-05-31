@@ -15,6 +15,7 @@ type DocumentResponseDTO struct {
 	ID          uuid.UUID `json:"id"`
 	ChatID      uuid.UUID `json:"chat_id"`
 	Name        string    `json:"name"`
+	Tags        []string  `json:"tags"`
 	Path        string    `json:"path"`
 	Protected   bool      `json:"protected"`
 	AccessLevel int       `json:"access_level"`
@@ -33,4 +34,8 @@ type DocumentIngestResponse struct {
 	Document    interface{} `json:"doc"` // можно заменить на конкретный DTO DocumentResponseDTO
 	ChunksTotal int         `json:"chunks_total"`
 	ChunksSaved int         `json:"chunks_saved"`
+}
+
+type DocumentTagsResponse struct {
+	Tags []string `json:"tags"`
 }

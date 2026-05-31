@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/pgvector/pgvector-go"
 )
 
@@ -33,16 +34,17 @@ type Chat struct {
 
 // Документы
 type Document struct {
-	ID          uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	ChatID      uuid.UUID `gorm:"type:uuid;not null" json:"chat_id"`
-	Name        string    `gorm:"not null" json:"name"`
-	Path        string    `json:"path"`
-	FullPath    string    `json:"full_path"`
-	Protected   bool      `gorm:"default:false" json:"protected"`
-	AccessLevel int       `gorm:"default:0" json:"access_level"`
-	CreatedDate time.Time `gorm:"default:now()" json:"created_date"`
-	Chat        Chat      `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:ChatID" json:"-"`
-	Chunks      []Chunk   `gorm:"foreignKey:DocID;constraint:OnDelete:CASCADE;" swaggerignore:"true" json:"-"`
+	ID          uuid.UUID      `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	ChatID      uuid.UUID      `gorm:"type:uuid;not null" json:"chat_id"`
+	Name        string         `gorm:"not null" json:"name"`
+	Tags        pq.StringArray `gorm:"type:text[];not null;default:'{}'" json:"tags" swaggertype:"array,string"`
+	Path        string         `json:"path"`
+	FullPath    string         `json:"full_path"`
+	Protected   bool           `gorm:"default:false" json:"protected"`
+	AccessLevel int            `gorm:"default:0" json:"access_level"`
+	CreatedDate time.Time      `gorm:"default:now()" json:"created_date"`
+	Chat        Chat           `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:ChatID" json:"-"`
+	Chunks      []Chunk        `gorm:"foreignKey:DocID;constraint:OnDelete:CASCADE;" swaggerignore:"true" json:"-"`
 }
 
 // Чанки

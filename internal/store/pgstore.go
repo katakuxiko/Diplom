@@ -46,6 +46,8 @@ func NewPgStore(conn string) (*gorm.DB, error) {
 // ensureSchema для pgvector и индексов
 func ensureSchema(db *gorm.DB) error {
 	stmts := []string{
+		`ALTER TABLE documents ADD COLUMN IF NOT EXISTS tags text[] NOT NULL DEFAULT '{}'::text[];`,
+		`CREATE INDEX IF NOT EXISTS documents_tags_gin_idx ON documents USING GIN (tags);`,
 
 		`DO $$
 		BEGIN

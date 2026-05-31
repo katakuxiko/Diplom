@@ -54,6 +54,7 @@ func NewDocumentHandler(
 // @Produce      json
 // @Param        chat_id formData string true "Chat ID (uuid)"
 // @Param        file formData file true "document file"
+// @Param        tags formData string false "Document tags, JSON array or comma-separated list"
 // @Success      200 {object} dto.DocumentIngestResponse
 // @Failure      400 {object} map[string]string
 // @Failure      500 {object} map[string]string
@@ -74,6 +75,7 @@ func (h *DocumentHandler) UploadAndIngestPDF(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid chat_id"})
 	}
+	tags := parseDocumentTags(c.FormValue("tags"))
 
 	file, err := fileHeader.Open()
 	if err != nil {
@@ -82,7 +84,7 @@ func (h *DocumentHandler) UploadAndIngestPDF(c *fiber.Ctx) error {
 	defer file.Close()
 
 	// --- 2. Сохраняем документ через сервис
-	doc, err := h.documentService.CreateDocument(chatID, file, fileHeader, h.cfg)
+	doc, err := h.documentService.CreateDocument(chatID, file, fileHeader, h.cfg, tags)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}

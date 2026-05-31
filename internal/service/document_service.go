@@ -3,6 +3,8 @@ package service
 import (
 	"fmt"
 	"mime/multipart"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,6 +13,7 @@ import (
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/repository"
 	"github.com/katakuxiko/Diplom/internal/storage"
+	"github.com/lib/pq"
 )
 
 type DocumentService struct {
@@ -22,11 +25,12 @@ func NewDocumentService(repo *repository.DocumentRepository, storage *storage.Mi
 	return &DocumentService{repo: repo, storage: storage}
 }
 
-func (s *DocumentService) CreateDocument(chatID uuid.UUID, file multipart.File, fileHeader *multipart.FileHeader, cfg *config.Config) (*models.Document, error) {
+func (s *DocumentService) CreateDocument(chatID uuid.UUID, file multipart.File, fileHeader *multipart.FileHeader, cfg *config.Config, tags []string) (*models.Document, error) {
 	docID := uuid.New()
 	objectName := fmt.Sprintf("%s/%s", chatID.String(), fileHeader.Filename)
 	fullPath := fmt.Sprintf("%s/%s/%s", cfg.MinioEndpoint, cfg.MinioBucket, objectName)
 	print(objectName)
+	normalizedTags := normalizeDocumentTags(tags)
 	// загрузка в MinIO через storage
 	if _, err := s.storage.UploadFile(objectName, file, fileHeader); err != nil {
 		return nil, err
@@ -36,6 +40,7 @@ func (s *DocumentService) CreateDocument(chatID uuid.UUID, file multipart.File, 
 		ID:          docID,
 		ChatID:      chatID,
 		Name:        fileHeader.Filename,
+		Tags:        pq.StringArray(normalizedTags),
 		Path:        objectName,
 		FullPath:    fullPath,
 		CreatedDate: time.Now(),
@@ -51,13 +56,14 @@ func (s *DocumentService) GetFile(id uuid.UUID) (*models.Document, error) {
 }
 
 // GetAllDocuments — список документов
-func (s *DocumentService) GetAllDocumentsPaginated(limit, page int, chatID uuid.UUID, maxAccessLevel int) (*dto.PaginatedDocuments, error) {
+func (s *DocumentService) GetAllDocumentsPaginated(limit, page int, chatID uuid.UUID, maxAccessLevel int, tags []string) (*dto.PaginatedDocuments, error) {
 	if page < 1 {
 		page = 1
 	}
 	offset := (page - 1) * limit
+	normalizedTags := normalizeDocumentTags(tags)
 
-	docs, total, err := s.repo.GetAllPaginated(limit, offset, chatID, maxAccessLevel)
+	docs, total, err := s.repo.GetAllPaginated(limit, offset, chatID, maxAccessLevel, normalizedTags)
 	if err != nil {
 		return nil, err
 	}
@@ -106,4 +112,50 @@ func (s *DocumentService) UpdateAccessLevel(id uuid.UUID, level int) (*models.Do
 		return nil, err
 	}
 	return doc, nil
+}
+
+func (s *DocumentService) UpdateTags(id uuid.UUID, tags []string) (*models.Document, error) {
+	doc, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	doc.Tags = pq.StringArray(normalizeDocumentTags(tags))
+	if err := s.repo.Update(doc); err != nil {
+		return nil, err
+	}
+
+	return doc, nil
+}
+
+func (s *DocumentService) GetDocumentTags(chatID uuid.UUID, maxAccessLevel int) ([]string, error) {
+	tags, err := s.repo.GetDistinctTags(chatID, maxAccessLevel)
+	if err != nil {
+		return nil, err
+	}
+
+	return normalizeDocumentTags(tags), nil
+}
+
+func normalizeDocumentTags(tags []string) []string {
+	if len(tags) == 0 {
+		return []string{}
+	}
+
+	seen := make(map[string]struct{}, len(tags))
+	normalized := make([]string, 0, len(tags))
+	for _, raw := range tags {
+		tag := strings.ToLower(strings.TrimSpace(raw))
+		if tag == "" {
+			continue
+		}
+		if _, ok := seen[tag]; ok {
+			continue
+		}
+		seen[tag] = struct{}{}
+		normalized = append(normalized, tag)
+	}
+
+	sort.Strings(normalized)
+	return normalized
 }
