@@ -62,6 +62,43 @@ func (s *RAGService) Ask(query string, topK int, chatID uuid.UUID, settings *mod
 }
 
 func (s *RAGService) AskWithDiagnostics(query string, topK int, chatID uuid.UUID, settings *models.AskSettings, accessLevel int, history []models.ChatContextMessage) (string, []models.Chunk, RetrievalDiagnostics, error) {
+	return s.askWithDiagnosticsInternal(query, topK, chatID, settings, accessLevel, history, func(q, ctx string, askSettings *models.AskSettings, askHistory []models.ChatContextMessage) (string, error) {
+		if s.llm == nil {
+			return "", fmt.Errorf("llm client is nil")
+		}
+		return s.llm.AskWithSettings(q, ctx, askSettings, askHistory)
+	})
+}
+
+func (s *RAGService) AskWithDiagnosticsStream(query string, topK int, chatID uuid.UUID, settings *models.AskSettings, accessLevel int, history []models.ChatContextMessage, onDelta func(string) error) (string, []models.Chunk, RetrievalDiagnostics, error) {
+	if onDelta == nil {
+		return "", nil, RetrievalDiagnostics{}, fmt.Errorf("stream callback is nil")
+	}
+
+	answer, chunks, diagnostics, err := s.askWithDiagnosticsInternal(query, topK, chatID, settings, accessLevel, history, func(q, ctx string, askSettings *models.AskSettings, askHistory []models.ChatContextMessage) (string, error) {
+		if s.llm == nil {
+			return "", fmt.Errorf("llm client is nil")
+		}
+		return s.llm.AskWithSettingsStream(q, ctx, askSettings, askHistory, onDelta)
+	})
+	if err != nil {
+		return "", nil, diagnostics, err
+	}
+
+	if len(chunks) == 0 && strings.TrimSpace(answer) != "" {
+		if cbErr := onDelta(answer); cbErr != nil {
+			return "", nil, diagnostics, cbErr
+		}
+	}
+
+	return answer, chunks, diagnostics, nil
+}
+
+func (s *RAGService) askWithDiagnosticsInternal(query string, topK int, chatID uuid.UUID, settings *models.AskSettings, accessLevel int, history []models.ChatContextMessage, askFn func(query, contextText string, settings *models.AskSettings, history []models.ChatContextMessage) (string, error)) (string, []models.Chunk, RetrievalDiagnostics, error) {
+	if askFn == nil {
+		return "", nil, RetrievalDiagnostics{}, fmt.Errorf("ask function is nil")
+	}
+
 	diagnostics := RetrievalDiagnostics{}
 
 	if topK <= 0 {
@@ -150,7 +187,7 @@ func (s *RAGService) AskWithDiagnostics(query string, topK int, chatID uuid.UUID
 	ctx := b.String()
 
 	startTime := time.Now()
-	answer, err := s.llm.AskWithSettings(query, ctx, settings, history)
+	answer, err := askFn(query, ctx, settings, history)
 	fmt.Printf("⏱️  LLM response time: %v\n", time.Since(startTime))
 	if err != nil {
 		return "", nil, diagnostics, fmt.Errorf("llm error: %w", err)

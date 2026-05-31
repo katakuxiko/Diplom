@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -58,6 +59,80 @@ func createChatCompletionWithContinuation(client *openai.Client, req openai.Chat
 		}
 
 		if strings.ToLower(strings.TrimSpace(string(choice.FinishReason))) != "length" {
+			break
+		}
+		if attempt == maxAutoContinuationParts || content == "" {
+			break
+		}
+
+		workingReq.Messages = append(workingReq.Messages,
+			openai.ChatCompletionMessage{Role: "assistant", Content: content},
+			openai.ChatCompletionMessage{Role: "user", Content: continuePrompt},
+		)
+	}
+
+	result := strings.TrimSpace(strings.Join(parts, "\n"))
+	if result == "" {
+		return "", fmt.Errorf("LLM вернул пустой ответ")
+	}
+	return result, nil
+}
+
+func createChatCompletionStreamWithContinuation(client *openai.Client, req openai.ChatCompletionRequest, onDelta func(string) error) (string, error) {
+	if onDelta == nil {
+		return "", fmt.Errorf("stream callback is required")
+	}
+
+	parts := make([]string, 0, maxAutoContinuationParts+1)
+	workingReq := req
+
+	for attempt := 0; attempt <= maxAutoContinuationParts; attempt++ {
+		stream, err := client.CreateChatCompletionStream(context.Background(), workingReq)
+		if err != nil {
+			return "", err
+		}
+
+		var partBuilder strings.Builder
+		finishReason := ""
+
+		for {
+			resp, recvErr := stream.Recv()
+			if errors.Is(recvErr, io.EOF) {
+				break
+			}
+			if recvErr != nil {
+				_ = stream.Close()
+				return "", recvErr
+			}
+			if len(resp.Choices) == 0 {
+				continue
+			}
+
+			choice := resp.Choices[0]
+			if choice.FinishReason != "" {
+				finishReason = strings.ToLower(strings.TrimSpace(string(choice.FinishReason)))
+			}
+
+			delta := choice.Delta.Content
+			if delta == "" {
+				continue
+			}
+
+			partBuilder.WriteString(delta)
+			if cbErr := onDelta(delta); cbErr != nil {
+				_ = stream.Close()
+				return "", cbErr
+			}
+		}
+
+		_ = stream.Close()
+
+		content := strings.TrimSpace(partBuilder.String())
+		if content != "" {
+			parts = append(parts, content)
+		}
+
+		if finishReason != "length" {
 			break
 		}
 		if attempt == maxAutoContinuationParts || content == "" {
@@ -811,6 +886,117 @@ func (l *LLMClient) AskWithSettings(query, contextText string, settings *models.
 			}
 			status, body := diagGETWithAuth(usedBase, diagKey)
 			log.Printf("Chat diagnostic GET %s -> status=%s body=%s", usedBase, status, body)
+		}
+		return "", err
+	}
+	return answer, nil
+}
+
+// AskWithSettingsStream выполняет потоковый запрос к модели с учётом per-chat провайдера.
+func (l *LLMClient) AskWithSettingsStream(query, contextText string, settings *models.AskSettings, history []models.ChatContextMessage, onDelta func(string) error) (string, error) {
+	if onDelta == nil {
+		return "", fmt.Errorf("stream callback is required")
+	}
+
+	greetings := []string{"привет", "привет!", "здравствуй", "здравствуйте", "hi", "hello", "hey", "привета", "хай", "хелло"}
+	lowerQuery := strings.ToLower(strings.TrimSpace(query))
+	for _, greeting := range greetings {
+		if lowerQuery == greeting {
+			staticAnswer := localizedStaticReply(
+				query,
+				"Привет! 👋 Я помогу найти информацию в загруженных документах. Задайте ваш вопрос.",
+				"Hi! 👋 I can help you find information in the uploaded documents. Ask your question.",
+			)
+			if err := onDelta(staticAnswer); err != nil {
+				return "", err
+			}
+			return staticAnswer, nil
+		}
+	}
+
+	if strings.TrimSpace(contextText) == "" {
+		staticAnswer := localizedStaticReply(
+			query,
+			"К сожалению, в загруженных документах не найдено информации по вашему запросу. Попробуйте переформулировать вопрос или загрузите дополнительные материалы.",
+			"Unfortunately, no relevant information was found in the uploaded documents for your request. Try rephrasing the question or upload additional materials.",
+		)
+		if err := onDelta(staticAnswer); err != nil {
+			return "", err
+		}
+		return staticAnswer, nil
+	}
+
+	modelName := l.chatName
+	temperature := float32(0.7)
+	maxTokens := 2000
+	systemPrompt := `Ты - профессиональный аналитик документов. Твоя задача - давать точные, структурированные ответы на основе предоставленных материалов.
+
+КРИТИЧЕСКИЕ ПРАВИЛА:
+1. Используй ТОЛЬКО информацию из КОНТЕКСТА ниже
+2. Не используй знания, полученные во время обучения
+3. Если информация неполная или неоднозначная - явно укажи это
+4. При отсутствии релевантной информации отвечай: "Информация по данному вопросу отсутствует в документах"
+
+ФОРМАТИРОВАНИЕ ОТВЕТА:
+- Структурируй ответ (используй списки, подзаголовки при необходимости)
+- Будь конкретным и информативным
+- Если в контексте есть несколько релевантных фрагментов - синтезируй целостный ответ
+- Избегай упоминаний о "контексте", "документах" или своей природе как ИИ
+- Отвечай прямо на вопрос, без лишних вступлений`
+
+	if settings != nil {
+		if settings.Model != "" {
+			modelName = settings.Model
+		}
+		if settings.SystemPrompt != "" {
+			systemPrompt = settings.SystemPrompt
+		}
+		if settings.MaxTokens > 0 {
+			maxTokens = settings.MaxTokens
+		}
+		if settings.Temperature > 0 {
+			temperature = settings.Temperature
+		}
+	}
+
+	systemPrompt = applyLanguagePolicyToSystemPrompt(systemPrompt, query)
+
+	userPrompt := buildLanguageAwareUserPrompt(contextText, query)
+
+	client := l.clientForSettings(settings)
+
+	usedBase := l.baseURL
+	provider := resolveChatProvider(settings)
+	if settings != nil {
+		if provider == "external" && strings.TrimSpace(settings.ExternalBaseURL) != "" {
+			usedBase = settings.ExternalBaseURL
+		}
+	}
+	log.Printf("Chat stream request: model=%s provider=%s baseURL=%s", modelName, provider, usedBase)
+
+	req := openai.ChatCompletionRequest{
+		Model:           modelName,
+		Messages:        buildAnswerMessages(systemPrompt, userPrompt, settings, history),
+		Temperature:     temperature,
+		TopP:            0.9,
+		MaxTokens:       maxTokens,
+		PresencePenalty: 0.1,
+		Stream:          true,
+	}
+	if effort := reasoningEffortForModel(modelName); effort != "" {
+		req.ReasoningEffort = effort
+	}
+
+	answer, err := createChatCompletionStreamWithContinuation(client, req, onDelta)
+	if err != nil {
+		log.Printf("Chat stream error: %v", err)
+		if usedBase != "" {
+			diagKey := ""
+			if settings != nil && provider == "external" && settings.ExternalAPIKey != "" {
+				diagKey = settings.ExternalAPIKey
+			}
+			status, body := diagGETWithAuth(usedBase, diagKey)
+			log.Printf("Chat stream diagnostic GET %s -> status=%s body=%s", usedBase, status, body)
 		}
 		return "", err
 	}

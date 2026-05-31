@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -327,6 +328,21 @@ func (h *Handler) AskQuestion(c *fiber.Ctx) error {
 		}
 	}
 
+	if req.Stream {
+		return h.streamAskQuestion(
+			c,
+			effectiveQuery,
+			k,
+			req.ChatID,
+			settings,
+			accessLevel,
+			historyMessages,
+			modelName,
+			continuationResolved,
+			continuationBaseQuery,
+		)
+	}
+
 	// если модель указана, используем её; иначе — дефолт внутри LLMClient/Service
 	ans, ctxChunks, diagnostics, err := h.rag.AskWithDiagnostics(effectiveQuery, k, req.ChatID, settings, accessLevel, historyMessages)
 	if err != nil {
@@ -349,6 +365,89 @@ func (h *Handler) AskQuestion(c *fiber.Ctx) error {
 			return ""
 		}(),
 	})
+}
+
+func (h *Handler) streamAskQuestion(
+	c *fiber.Ctx,
+	effectiveQuery string,
+	topK int,
+	chatID uuid.UUID,
+	settings *models.AskSettings,
+	accessLevel int,
+	historyMessages []models.ChatContextMessage,
+	modelName string,
+	continuationResolved bool,
+	continuationBaseQuery string,
+) error {
+	c.Set(fiber.HeaderContentType, "text/event-stream")
+	c.Set(fiber.HeaderCacheControl, "no-cache")
+	c.Set(fiber.HeaderConnection, "keep-alive")
+	c.Set("X-Accel-Buffering", "no")
+
+	historyUsed := settings.EnableHistory && len(historyMessages) > 0
+
+	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+		sendEvent := func(event string, payload interface{}) error {
+			raw, err := json.Marshal(payload)
+			if err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", raw); err != nil {
+				return err
+			}
+			return w.Flush()
+		}
+
+		if err := sendEvent("start", fiber.Map{
+			"model":                 modelName,
+			"history_used":          historyUsed,
+			"history_messages_used": len(historyMessages),
+			"continuation_resolved": continuationResolved,
+			"continuation_base_query": func() string {
+				if continuationResolved {
+					return continuationBaseQuery
+				}
+				return ""
+			}(),
+		}); err != nil {
+			return
+		}
+
+		ans, ctxChunks, diagnostics, err := h.rag.AskWithDiagnosticsStream(effectiveQuery, topK, chatID, settings, accessLevel, historyMessages, func(delta string) error {
+			if delta == "" {
+				return nil
+			}
+			return sendEvent("delta", fiber.Map{"delta": delta})
+		})
+		if err != nil {
+			log.Printf("rag ask stream error: %v", err)
+			_ = sendEvent("error", fiber.Map{"error": err.Error()})
+			return
+		}
+
+		if err := sendEvent("done", fiber.Map{
+			"answer":                ans,
+			"context":               ctxChunks,
+			"model":                 modelName,
+			"retrieval_diagnostics": diagnostics,
+			"history_used":          historyUsed,
+			"history_messages_used": len(historyMessages),
+			"continuation_resolved": continuationResolved,
+			"continuation_base_query": func() string {
+				if continuationResolved {
+					return continuationBaseQuery
+				}
+				return ""
+			}(),
+		}); err != nil {
+			return
+		}
+	})
+
+	return nil
 }
 
 // GetChatHistoryForAdmin — получить истории и сообщения чата для админа
