@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -18,6 +19,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/dto"
+	"github.com/katakuxiko/Diplom/internal/middleware"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/pdf"
 	"github.com/katakuxiko/Diplom/internal/repository"
@@ -42,6 +44,74 @@ const (
 	llmHistoryMaxMessages     = 8
 	llmHistoryMessageMaxChars = 1200
 )
+
+func parseOptionalJWTClaims(c *fiber.Ctx) (jwt.MapClaims, error) {
+	authHeader := strings.TrimSpace(c.Get("Authorization"))
+	if authHeader == "" {
+		return nil, nil
+	}
+
+	tokenStr := authHeader
+	if len(tokenStr) > 7 && strings.EqualFold(tokenStr[:7], "Bearer ") {
+		tokenStr = strings.TrimSpace(tokenStr[7:])
+	}
+	if tokenStr == "" {
+		return nil, fmt.Errorf("missing token")
+	}
+
+	if len(middleware.JwtSecret) == 0 {
+		return nil, fmt.Errorf("jwt secret is not configured")
+	}
+
+	token, err := jwt.ParseWithClaims(tokenStr, jwt.MapClaims{}, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method")
+		}
+		return middleware.JwtSecret, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !token.Valid {
+		return nil, fmt.Errorf("invalid token")
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, fmt.Errorf("invalid token claims")
+	}
+
+	return claims, nil
+}
+
+func claimAccessLevel(claims jwt.MapClaims) int {
+	if claims == nil {
+		return 0
+	}
+
+	switch v := claims["access_level"].(type) {
+	case float64:
+		return int(v)
+	case float32:
+		return int(v)
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case json.Number:
+		n, err := v.Int64()
+		if err == nil {
+			return int(n)
+		}
+	case string:
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		if err == nil {
+			return n
+		}
+	}
+
+	return 0
+}
 
 // NewHandler конструктор
 func NewHandler(rag *service.RAGService, llm *service.LLMClient, chunkService *service.ChunkService, chatSettings *service.ChatSettingsService, chatHistoryRepo *repository.ChatHistoryRepository, messageRepo *repository.MessageRepository, evaluation *service.EvaluationService) *Handler {
@@ -213,29 +283,41 @@ func (h *Handler) AskQuestion(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "chat_id is required"})
 	}
 
-	// Попробуем получить claims из контекста; если их нет — разрешаем анонимный доступ с accessLevel=0
+	// Попробуем получить claims из контекста; для публичного /ask также читаем Bearer-токен из заголовка.
 	accessLevel := 0
+	var claims jwt.MapClaims
 	if v := c.Locals("user"); v != nil {
-		if claims, ok := v.(jwt.MapClaims); ok {
-			if al, ok := claims["access_level"].(float64); ok {
-				accessLevel = int(al)
+		if localClaims, ok := v.(jwt.MapClaims); ok {
+			claims = localClaims
+		}
+	}
+	if claims == nil {
+		headerClaims, claimsErr := parseOptionalJWTClaims(c)
+		if claimsErr != nil {
+			log.Printf("ask token parse error: %v", claimsErr)
+			return c.Status(401).JSON(fiber.Map{"error": "invalid token"})
+		}
+		claims = headerClaims
+	}
+
+	if claims != nil {
+		accessLevel = claimAccessLevel(claims)
+		if role, ok := claims["role"].(string); ok {
+			if role == "superuser" {
+				accessLevel = 100
 			}
-			if role, ok := claims["role"].(string); ok {
-				if role == "superuser" {
-					accessLevel = 100
-				}
-				if role == "chat_user" {
-					if chatStr, ok := claims["chat_id"].(string); ok && chatStr != "" {
-						if claimChat, err := uuid.Parse(chatStr); err == nil {
-							if claimChat != req.ChatID {
-								return c.Status(403).JSON(fiber.Map{"error": "chat mismatch"})
-							}
+			if role == "chat_user" {
+				if chatStr, ok := claims["chat_id"].(string); ok && chatStr != "" {
+					if claimChat, err := uuid.Parse(chatStr); err == nil {
+						if claimChat != req.ChatID {
+							return c.Status(403).JSON(fiber.Map{"error": "chat mismatch"})
 						}
 					}
 				}
 			}
 		}
 	}
+	log.Printf("ask access resolved: chat_id=%s access_level=%d has_claims=%t", req.ChatID.String(), accessLevel, claims != nil)
 
 	// Собираем настройки LLM
 	settings := req.Settings
