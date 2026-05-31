@@ -52,12 +52,20 @@ func (r *ChatRepository) List() ([]models.Chat, error) {
 }
 
 func (r *ChatRepository) Delete(id string) error {
-	// Сначала удаляем связанные настройки чата
-	if err := r.db.Where("chat_id = ?", id).Delete(&models.ChatSetting{}).Error; err != nil {
-		return err
-	}
-	// Затем удаляем сам чат
-	return r.db.Delete(&models.Chat{}, "id = ?", id).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Сначала удаляем связи админов с чатом, иначе FK может блокировать удаление чата.
+		if err := tx.Where("chat_id = ?", id).Delete(&models.ChatAdmin{}).Error; err != nil {
+			return err
+		}
+
+		// Затем удаляем связанные настройки чата.
+		if err := tx.Where("chat_id = ?", id).Delete(&models.ChatSetting{}).Error; err != nil {
+			return err
+		}
+
+		// После очистки зависимостей удаляем сам чат.
+		return tx.Delete(&models.Chat{}, "id = ?", id).Error
+	})
 }
 
 func (r *ChatRepository) ListByAdmin(adminID string) ([]models.Chat, error) {
