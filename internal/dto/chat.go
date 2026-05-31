@@ -37,3 +37,8 @@ type ChatUpdateRequest struct {
 	Name  *string `json:"name,omitempty" example:"Updated Project Chat"`
 	Descr *string `json:"descr,omitempty" example:"Обновленное описание проекта"`
 }
+
+// ChatInviteAdminRequest DTO для приглашения админа в чат
+type ChatInviteAdminRequest struct {
+	AdminID string `json:"admin_id" example:"550e8400-e29b-41d4-a716-446655440000"`
+}

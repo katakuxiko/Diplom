@@ -15,7 +15,9 @@ func RegisterChatRoutes(app *fiber.App, svc *service.ChatService) {
 
 	r.Get("/", middleware.JWTProtected(), handlers.ListChats(chatService))
 	r.Get("/:id", middleware.JWTProtected(), handlers.GetChat(chatService))
+	r.Get("/:id/admins", middleware.JWTProtected(), handlers.ListChatAdmins(chatService))
 	r.Post("/", middleware.JWTProtected(), handlers.CreateChat(chatService))
+	r.Post("/:id/invite-admin", middleware.JWTProtected(), handlers.InviteAdminToChat(chatService))
 	r.Delete("/:id", middleware.JWTProtected(), handlers.DeleteChat(chatService))
 	r.Put("/:id", middleware.JWTProtected(), handlers.UpdateChat(chatService))
 }

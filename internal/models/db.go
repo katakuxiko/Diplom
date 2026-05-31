@@ -10,11 +10,12 @@ import (
 
 // Админы
 type Admin struct {
-	ID           uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
-	Username     string    `gorm:"unique;not null"`
-	PasswordHash string    `gorm:"not null"`
-	IsSuperUser  bool      `gorm:"default:false"`
-	Chats        []Chat    `gorm:"foreignKey:AdminID" swaggerignore:"true"`
+	ID           uuid.UUID   `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
+	Username     string      `gorm:"unique;not null"`
+	PasswordHash string      `gorm:"not null"`
+	IsSuperUser  bool        `gorm:"default:false"`
+	Chats        []Chat      `gorm:"foreignKey:AdminID" swaggerignore:"true"`
+	ChatMembers  []ChatAdmin `gorm:"foreignKey:AdminID" swaggerignore:"true"`
 }
 
 // Чаты
@@ -25,11 +26,22 @@ type Chat struct {
 	Name        string `gorm:"not null"`
 	Descr       string
 	CreatedDate time.Time     `gorm:"default:now()"`
+	Admins      []ChatAdmin   `gorm:"foreignKey:ChatID" swaggerignore:"true"`
 	Documents   []Document    `gorm:"foreignKey:ChatID" swaggerignore:"true"`
 	Settings    []ChatSetting `gorm:"foreignKey:ChatID" swaggerignore:"true"`
 	Roles       []Role        `gorm:"foreignKey:ChatID" swaggerignore:"true"`
 	Users       []ChatUser    `gorm:"foreignKey:ChatID" swaggerignore:"true"`
 	History     []ChatHistory `gorm:"foreignKey:ChatID" swaggerignore:"true"`
+}
+
+// Связь чат-админ (доступ админа к управлению чатом)
+type ChatAdmin struct {
+	ID          uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
+	ChatID      uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:idx_chat_admin_unique"`
+	Chat        Chat      `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:ChatID" swaggerignore:"true"`
+	AdminID     uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:idx_chat_admin_unique"`
+	Admin       Admin     `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:AdminID" swaggerignore:"true"`
+	CreatedDate time.Time `gorm:"default:now()"`
 }
 
 // Документы

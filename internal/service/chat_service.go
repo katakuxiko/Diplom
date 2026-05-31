@@ -1,11 +1,21 @@
 package service
 
 import (
+	"errors"
+
 	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/dto"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/repository"
 	"gorm.io/gorm"
+)
+
+var (
+	ErrChatNotFound         = errors.New("chat not found")
+	ErrChatAccessDenied     = errors.New("chat access denied")
+	ErrOnlyCreatorCanInvite = errors.New("only chat creator can invite admins")
+	ErrAdminNotFound        = errors.New("admin not found")
+	ErrAdminAlreadyInChat   = errors.New("admin already in chat")
 )
 
 // Интерфейс, который используют хендлеры и тесты
@@ -15,6 +25,9 @@ type ChatServiceInterface interface {
 	GetByID(id string) (*models.Chat, error)
 	ListAll() ([]models.Chat, error)
 	ListByAdmin(adminID string) ([]models.Chat, error)
+	EnsureAdminAccess(chatID string, adminID string) error
+	InviteAdmin(chatID string, inviterAdminID string, inviteeAdminID string) error
+	ListAdmins(chatID string, requesterAdminID string) ([]models.Admin, error)
 	Delete(id string) error
 	Update(id string, req *dto.ChatUpdateRequest) (*models.Chat, error)
 	SetDB(db *gorm.DB)
@@ -69,6 +82,70 @@ func (s *ChatService) ListAll() ([]models.Chat, error) {
 
 func (s *ChatService) ListByAdmin(adminID string) ([]models.Chat, error) {
 	return s.repo.ListByAdmin(adminID)
+}
+
+func (s *ChatService) EnsureAdminAccess(chatID string, adminID string) error {
+	if _, err := s.repo.GetByID(chatID); err != nil {
+		return ErrChatNotFound
+	}
+
+	hasAccess, err := s.repo.IsAdminInChat(chatID, adminID)
+	if err != nil {
+		return err
+	}
+	if !hasAccess {
+		return ErrChatAccessDenied
+	}
+
+	return nil
+}
+
+func (s *ChatService) InviteAdmin(chatID string, inviterAdminID string, inviteeAdminID string) error {
+	if _, err := s.repo.GetByID(chatID); err != nil {
+		return ErrChatNotFound
+	}
+
+	isCreator, err := s.repo.IsCreator(chatID, inviterAdminID)
+	if err != nil {
+		return err
+	}
+	if !isCreator {
+		return ErrOnlyCreatorCanInvite
+	}
+
+	inviteeExists, err := s.repo.AdminExists(inviteeAdminID)
+	if err != nil {
+		return err
+	}
+	if !inviteeExists {
+		return ErrAdminNotFound
+	}
+
+	hasAccess, err := s.repo.IsAdminInChat(chatID, inviteeAdminID)
+	if err != nil {
+		return err
+	}
+	if hasAccess {
+		return ErrAdminAlreadyInChat
+	}
+
+	created, err := s.repo.AddAdminToChat(chatID, inviteeAdminID)
+	if err != nil {
+		return err
+	}
+	if !created {
+		return ErrAdminAlreadyInChat
+	}
+
+	return nil
+}
+
+func (s *ChatService) ListAdmins(chatID string, requesterAdminID string) ([]models.Admin, error) {
+	if err := s.EnsureAdminAccess(chatID, requesterAdminID); err != nil {
+		return nil, err
+	}
+
+	return s.repo.ListAdminsByChat(chatID)
 }
 
 func (s *ChatService) Delete(id string) error {
