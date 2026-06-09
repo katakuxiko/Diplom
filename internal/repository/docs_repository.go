@@ -3,6 +3,7 @@ package repository
 import (
 	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/models"
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
@@ -24,18 +25,54 @@ func (r *DocumentRepository) GetByID(id uuid.UUID) (*models.Document, error) {
 	return &doc, err
 }
 
-func (r *DocumentRepository) GetAllPaginated(limit, offset int) ([]models.Document, int64, error) {
+func (r *DocumentRepository) GetAllPaginated(limit, offset int, chatID uuid.UUID, maxAccessLevel int, tags []string) ([]models.Document, int64, error) {
 	var docs []models.Document
 	var total int64
 
-	// Считаем общее количество
-	if err := r.db.Model(&models.Document{}).Count(&total).Error; err != nil {
+	// Считаем общее количество документов по чату
+	query := r.db.Model(&models.Document{}).Where("chat_id = ?", chatID)
+	if maxAccessLevel >= 0 {
+		query = query.Where("access_level <= ?", maxAccessLevel)
+	}
+	if len(tags) > 0 {
+		query = query.Where("tags @> ?", pq.Array(tags))
+	}
+	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	// Получаем страницу документов
-	err := r.db.Limit(limit).Offset(offset).Find(&docs).Error
+	// Получаем страницу документов по чату
+	query = r.db.Where("chat_id = ?", chatID)
+	if maxAccessLevel >= 0 {
+		query = query.Where("access_level <= ?", maxAccessLevel)
+	}
+	if len(tags) > 0 {
+		query = query.Where("tags @> ?", pq.Array(tags))
+	}
+	err := query.Limit(limit).Offset(offset).Find(&docs).Error
 	return docs, total, err
+}
+
+func (r *DocumentRepository) GetDistinctTags(chatID uuid.UUID, maxAccessLevel int) ([]string, error) {
+	var tags []string
+	query := `
+		SELECT DISTINCT unnest(tags) AS tag
+		FROM documents
+		WHERE chat_id = ?
+	`
+	args := []interface{}{chatID}
+
+	if maxAccessLevel >= 0 {
+		query += " AND access_level <= ?"
+		args = append(args, maxAccessLevel)
+	}
+
+	query += " ORDER BY tag"
+	if err := r.db.Raw(query, args...).Scan(&tags).Error; err != nil {
+		return nil, err
+	}
+
+	return tags, nil
 }
 
 func (r *DocumentRepository) Update(doc *models.Document) error {

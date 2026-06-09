@@ -4,79 +4,53 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/dto"
+	"github.com/katakuxiko/Diplom/internal/middleware"
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/service"
 )
 
-// Обновление access токена по refresh токену
-type RefreshTokenRequest struct {
-	RefreshToken string `json:"refresh_token"`
-}
-
-func RefreshAccessToken(c *fiber.Ctx) error {
-	var req RefreshTokenRequest
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid request"})
-	}
-	claims, err := service.ParseJWT(req.RefreshToken)
-	if err != nil {
-		return c.Status(401).JSON(fiber.Map{"error": "invalid refresh token"})
-	}
-	// Генерируем новый access token
-	accessToken, err := service.GenerateJWT(claims.AdminID, 15*60) // 15 минут
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "token generation error"})
-	}
-	return c.JSON(fiber.Map{"access_token": accessToken})
-}
-
 var adminService *service.AdminService
 
-// Авторизация администратора
-func AdminLogin(c *fiber.Ctx) error {
-	var req dto.AdminAuthRequest
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid request"})
-	}
-	tokens, err := adminService.Authenticate(&req)
-	if err != nil {
-		return c.Status(401).JSON(fiber.Map{"error": "invalid credentials"})
-	}
-	return c.JSON(tokens)
-}
-
 // RegisterAdminRoutes регистрирует CRUD эндпоинты для админов
-func RegisterAdminRoutes(router fiber.Router, svc *service.AdminService) {
+func RegisterAdminRoutes(app *fiber.App, svc *service.AdminService) {
 	adminService = svc
-	r := router.Group("/admins")
+	// r := app.Group("/admins", middleware.SuperadminProtected())
+	r := app.Group("/admins", middleware.JWTProtected())
 
 	r.Get("/", GetAdmins)
+	r.Get("/stats", GetStats)
 	r.Get("/:id", GetAdminByID)
-	r.Post("/", CreateAdmin)
-	r.Put("/:id", UpdateAdmin)
-	r.Delete("/:id", DeleteAdmin)
-
-	// Эндпоинт авторизации только для публичного app, не для защищённой группы
-	if app, ok := router.(*fiber.App); ok {
-		app.Post("/api/login", AdminLogin)
-		app.Post("/api/refresh", RefreshAccessToken)
-	}
+	r.Post("/", middleware.SuperadminProtected(), CreateAdmin)
+	r.Put("/:id", middleware.SuperadminProtected(), UpdateAdmin)
+	r.Delete("/:id", middleware.SuperadminProtected(), DeleteAdmin)
 }
 
 // GetAdmins godoc
-// @Summary		Получить всех админов 1
+// @Summary		Получить всех админов
 // @Description	Возвращает список админов
 // @Tags			admins
 // @Produce		json
 // @Success		200	{array}		[]dto.AdminResponse
 // @Failure		500	{object}	map[string]string
 // @Router			/admins [get]
+// @Security     BearerAuth
 func GetAdmins(c *fiber.Ctx) error {
 	admins, err := adminService.GetAll()
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(admins)
+
+	result := make([]dto.AdminResponse, 0, len(admins))
+
+	for _, a := range admins {
+		result = append(result, dto.AdminResponse{
+			ID:          a.ID,
+			Username:    a.Username,
+			IsSuperUser: a.IsSuperUser,
+		})
+	}
+
+	return c.JSON(result)
 }
 
 // GetAdminByID godoc
@@ -98,7 +72,11 @@ func GetAdminByID(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "admin not found"})
 	}
-	return c.JSON(admin)
+	return c.JSON(dto.AdminResponse{
+		ID:          admin.ID,
+		Username:    admin.Username,
+		IsSuperUser: admin.IsSuperUser,
+	})
 }
 
 // CreateAdmin godoc
@@ -112,6 +90,7 @@ func GetAdminByID(c *fiber.Ctx) error {
 // @Failure		400		{object}	map[string]string
 // @Failure		500		{object}	map[string]string
 // @Router			/admins [post]
+// @Security     BearerAuth
 func CreateAdmin(c *fiber.Ctx) error {
 	var admin dto.AdminCreateRequest
 	if err := c.BodyParser(&admin); err != nil {
@@ -135,6 +114,7 @@ func CreateAdmin(c *fiber.Ctx) error {
 // @Failure		400		{object}	map[string]string
 // @Failure		500		{object}	map[string]string
 // @Router			/admins/{id} [put]
+// @Security     BearerAuth
 func UpdateAdmin(c *fiber.Ctx) error {
 	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {
@@ -160,6 +140,7 @@ func UpdateAdmin(c *fiber.Ctx) error {
 // @Failure		400	{object}	map[string]string
 // @Failure		500	{object}	map[string]string
 // @Router			/admins/{id} [delete]
+// @Security     BearerAuth
 func DeleteAdmin(c *fiber.Ctx) error {
 	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {
@@ -169,4 +150,21 @@ func DeleteAdmin(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(204)
+}
+
+// GetStats godoc
+// @Summary	Получить агрегированную статистику
+// @Description	Возвращает базовую статистику по системе
+// @Tags		admins
+// @Produce	json
+// @Success	200	{object} 	map[string]int64
+// @Failure	500	{object} 	map[string]string
+// @Router		/admins/stats [get]
+// @Security     BearerAuth
+func GetStats(c *fiber.Ctx) error {
+	stats, err := adminService.GetStats()
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(stats)
 }

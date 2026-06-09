@@ -1,25 +1,42 @@
 package handlers
 
 import (
+	"encoding/json"
+	"io"
+	"log"
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/config"
+	"github.com/katakuxiko/Diplom/internal/dto"
+	"github.com/katakuxiko/Diplom/internal/middleware"
+	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/service"
+	"github.com/katakuxiko/Diplom/internal/utils"
 )
 
 var documentService *service.DocumentService
 var cfg *config.Config
 
 // RegisterDocumentRoutes регистрирует CRUD эндпоинты для документов
-func RegisterDocumentRoutes(router fiber.Router, svc *service.DocumentService, cfgo *config.Config) {
+func RegisterDocumentRoutes(app *fiber.App, svc *service.DocumentService, cfgo *config.Config) {
 	documentService = svc
 	cfg = cfgo
-	r := router.Group("/documents")
+	r := app.Group("/documents", middleware.JWTProtected())
 
 	r.Post("/", CreateDocument)
 	r.Get("/", GetDocuments)
+	r.Get("/tags", GetDocumentTags)
 	r.Get("/:id", GetDocumentByID)
+	r.Get("/:id/download", DownloadDocument)
 	r.Delete("/:id", DeleteDocument)
+	r.Put("/:id/access", UpdateDocumentAccess)
+	r.Put("/:id/tags", UpdateDocumentTags)
+
+	// Публичный эндпоинт для скачивания документов с access_level=0 (без JWT)
+	app.Get("/public/documents/:id/download", DownloadPublicDocument)
 }
 
 // CreateDocument godoc
@@ -30,14 +47,19 @@ func RegisterDocumentRoutes(router fiber.Router, svc *service.DocumentService, c
 // @Produce      json
 // @Param        chat_id formData string true "Chat ID (UUID)"
 // @Param        file    formData file   true "Document file"
+// @Param        tags    formData string false "Document tags, JSON array or comma-separated list"
 // @Success      201 {object} dto.DocumentResponseDTO
 // @Failure      400 {object} map[string]string
 // @Failure      500 {object} map[string]string
 // @Router       /documents [post]
+// @Security     BearerAuth
 func CreateDocument(c *fiber.Ctx) error {
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "file is required"})
+	}
+	if err := utils.ValidatePDFUpload(fileHeader); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	chatIDStr := c.FormValue("chat_id")
@@ -45,6 +67,7 @@ func CreateDocument(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid chat_id"})
 	}
+	tags := parseDocumentTags(c.FormValue("tags"))
 
 	file, err := fileHeader.Open()
 	if err != nil {
@@ -52,7 +75,7 @@ func CreateDocument(c *fiber.Ctx) error {
 	}
 	defer file.Close()
 
-	doc, err := documentService.CreateDocument(chatID, file, fileHeader, cfg)
+	doc, err := documentService.CreateDocument(chatID, file, fileHeader, cfg, tags)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -61,25 +84,78 @@ func CreateDocument(c *fiber.Ctx) error {
 }
 
 // GetDocuments godoc
-// @Summary      Получить документы с пагинацией
-// @Description  Возвращает список документов с пагинацией
+// @Summary      Получить документы чата с пагинацией
+// @Description  Возвращает список документов для конкретного чата с пагинацией
 // @Tags         documents
 // @Produce      json
-// @Param        page  query     int  false  "Номер страницы"  default(1)
-// @Param        limit query     int  false  "Количество документов на странице"  default(10)
+// @Param        chat_id query     string  true   "Chat ID (UUID)"
+// @Param        page    query     int     false  "Номер страницы"  default(1)
+// @Param        limit   query     int     false  "Количество документов на странице"  default(10)
+// @Param        tags    query     string  false  "Фильтр по тэгам, JSON array или comma-separated"
 // @Success      200 {object} dto.PaginatedDocuments
+// @Failure      400 {object} map[string]string
 // @Failure      500 {object} map[string]string
 // @Router       /documents [get]
+// @Security     BearerAuth
 func GetDocuments(c *fiber.Ctx) error {
 	page := c.QueryInt("page", 1)
 	limit := c.QueryInt("limit", 10)
+	chatIDStr := c.Query("chat_id")
+	chatID, err := uuid.Parse(chatIDStr)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid chat_id"})
+	}
+	filterTags := parseDocumentTags(c.Query("tags"))
+	maxAccess := -1
+	if claims, ok := c.Locals("user").(jwt.MapClaims); ok {
+		if role, rok := claims["role"].(string); rok && role == "chat_user" {
+			if al, ok := claims["access_level"].(float64); ok {
+				maxAccess = int(al)
+			}
+		}
+	}
 
-	paginatedDocs, err := documentService.GetAllDocumentsPaginated(limit, page)
+	paginatedDocs, err := documentService.GetAllDocumentsPaginated(limit, page, chatID, maxAccess, filterTags)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	return c.JSON(paginatedDocs)
+}
+
+// GetDocumentTags godoc
+// @Summary      Получить доступные тэги документов чата
+// @Description  Возвращает уникальный список тэгов документов для конкретного чата
+// @Tags         documents
+// @Produce      json
+// @Param        chat_id query string true "Chat ID (UUID)"
+// @Success      200 {object} dto.DocumentTagsResponse
+// @Failure      400 {object} map[string]string
+// @Failure      500 {object} map[string]string
+// @Router       /documents/tags [get]
+// @Security     BearerAuth
+func GetDocumentTags(c *fiber.Ctx) error {
+	chatIDStr := c.Query("chat_id")
+	chatID, err := uuid.Parse(chatIDStr)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid chat_id"})
+	}
+
+	maxAccess := -1
+	if claims, ok := c.Locals("user").(jwt.MapClaims); ok {
+		if role, rok := claims["role"].(string); rok && role == "chat_user" {
+			if al, aok := claims["access_level"].(float64); aok {
+				maxAccess = int(al)
+			}
+		}
+	}
+
+	tags, err := documentService.GetDocumentTags(chatID, maxAccess)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(dto.DocumentTagsResponse{Tags: tags})
 }
 
 // GetDocumentByID godoc
@@ -92,6 +168,7 @@ func GetDocuments(c *fiber.Ctx) error {
 // @Failure      400 {object} map[string]string
 // @Failure      404 {object} map[string]string
 // @Router       /documents/{id} [get]
+// @Security     BearerAuth
 func GetDocumentByID(c *fiber.Ctx) error {
 	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {
@@ -106,6 +183,107 @@ func GetDocumentByID(c *fiber.Ctx) error {
 	return c.JSON(doc)
 }
 
+// DownloadDocument godoc
+// @Summary      Скачать файл документа
+// @Description  Возвращает файл документа для скачивания
+// @Tags         documents
+// @Param        id path string true "Document ID"
+// @Produce      application/pdf
+// @Success      200 {file} binary
+// @Failure      400 {object} map[string]string
+// @Failure      404 {object} map[string]string
+// @Failure      500 {object} map[string]string
+// @Router       /documents/{id}/download [get]
+// @Security     BearerAuth
+func DownloadDocument(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		log.Printf("Invalid document ID: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "invalid id"})
+	}
+
+	doc, err := documentService.GetFile(id)
+	if err != nil {
+		log.Printf("Document not found: %v", err)
+		return c.Status(404).JSON(fiber.Map{"error": "document not found"})
+	}
+
+	if claims, ok := c.Locals("user").(jwt.MapClaims); ok {
+		if role, rok := claims["role"].(string); rok && role == "chat_user" {
+			accessLevel := 0
+			if al, aok := claims["access_level"].(float64); aok {
+				accessLevel = int(al)
+			}
+
+			if doc.AccessLevel > accessLevel {
+				return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
+			}
+		}
+	}
+
+	return sendDocumentFile(c, doc)
+}
+
+// DownloadPublicDocument godoc
+// @Summary      Скачать публичный файл документа
+// @Description  Возвращает файл документа для скачивания без JWT только если access_level == 0
+// @Tags         documents
+// @Param        id path string true "Document ID"
+// @Produce      application/pdf
+// @Success      200 {file} binary
+// @Failure      400 {object} map[string]string
+// @Failure      403 {object} map[string]string
+// @Failure      404 {object} map[string]string
+// @Failure      500 {object} map[string]string
+// @Router       /public/documents/{id}/download [get]
+func DownloadPublicDocument(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		log.Printf("Invalid document ID: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "invalid id"})
+	}
+
+	doc, err := documentService.GetFile(id)
+	if err != nil {
+		log.Printf("Document not found: %v", err)
+		return c.Status(404).JSON(fiber.Map{"error": "document not found"})
+	}
+
+	if doc.AccessLevel != 0 {
+		return c.Status(403).JSON(fiber.Map{"error": "document is not public"})
+	}
+
+	return sendDocumentFile(c, doc)
+}
+
+func sendDocumentFile(c *fiber.Ctx, doc *models.Document) error {
+
+	// Получаем файл из MinIO через storage
+	file, _, contentType, err := cfg.MinioStorage.GetFile(doc.Path)
+	if err != nil {
+		log.Printf("Failed to get file from storage: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "failed to get file from storage"})
+	}
+	defer file.Close()
+
+	// Читаем весь файл в память
+	data, err := io.ReadAll(file)
+	if err != nil {
+		log.Printf("Failed to read file: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "failed to read file"})
+	}
+
+	// Устанавливаем заголовки
+	c.Set("Content-Type", contentType)
+	c.Set("Content-Disposition", "attachment; filename=\""+doc.Name+"\"")
+	c.Set("Access-Control-Expose-Headers", "Content-Disposition")
+
+	log.Printf("Sending file: %s, size: %d bytes", doc.Name, len(data))
+
+	// Отдаем файл
+	return c.Send(data)
+}
+
 // DeleteDocument godoc
 // @Summary      Удалить документ
 // @Description  Удаляет документ по UUID
@@ -115,6 +293,7 @@ func GetDocumentByID(c *fiber.Ctx) error {
 // @Failure      400 {object} map[string]string
 // @Failure      500 {object} map[string]string
 // @Router       /documents/{id} [delete]
+// @Security     BearerAuth
 func DeleteDocument(c *fiber.Ctx) error {
 	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {
@@ -126,4 +305,89 @@ func DeleteDocument(c *fiber.Ctx) error {
 	}
 
 	return c.SendStatus(204)
+}
+
+// UpdateDocumentAccess godoc
+// @Summary      Обновить уровень доступа документа
+// @Description  Меняет поле access_level для документа
+// @Tags         documents
+// @Param        id    path   string true "Document ID"
+// @Param        body  body   map[string]int true "{\"access_level\":1}"
+// @Success      200   {object} dto.DocumentResponseDTO
+// @Failure      400   {object} map[string]string
+// @Failure      500   {object} map[string]string
+// @Router       /documents/{id}/access [put]
+// @Security     BearerAuth
+func UpdateDocumentAccess(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid id"})
+	}
+	var payload struct {
+		AccessLevel int `json:"access_level"`
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+	}
+
+	doc, err := documentService.UpdateAccessLevel(id, payload.AccessLevel)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(doc)
+}
+
+// UpdateDocumentTags godoc
+// @Summary      Обновить тэги документа
+// @Description  Полностью заменяет тэги документа
+// @Tags         documents
+// @Param        id    path   string true "Document ID"
+// @Param        body  body   map[string][]string true "{\"tags\":[\"policy\",\"faq\"]}"
+// @Success      200   {object} dto.DocumentResponseDTO
+// @Failure      400   {object} map[string]string
+// @Failure      500   {object} map[string]string
+// @Router       /documents/{id}/tags [put]
+// @Security     BearerAuth
+func UpdateDocumentTags(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid id"})
+	}
+
+	var payload struct {
+		Tags []string `json:"tags"`
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+	}
+
+	doc, err := documentService.UpdateTags(id, payload.Tags)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(doc)
+}
+
+func parseDocumentTags(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []string{}
+	}
+
+	var tags []string
+	if strings.HasPrefix(raw, "[") {
+		if err := json.Unmarshal([]byte(raw), &tags); err == nil {
+			return tags
+		}
+	}
+
+	parts := strings.Split(raw, ",")
+	tags = make([]string, 0, len(parts))
+	for _, part := range parts {
+		tags = append(tags, part)
+	}
+
+	return tags
 }

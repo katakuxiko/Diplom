@@ -4,16 +4,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/pgvector/pgvector-go"
 )
 
 // Админы
 type Admin struct {
-	ID           uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
-	Username     string    `gorm:"unique;not null"`
-	PasswordHash string    `gorm:"not null"`
-	IsSuperUser  bool      `gorm:"default:false"`
-	Chats        []Chat    `gorm:"foreignKey:AdminID" swaggerignore:"true"`
+	ID           uuid.UUID   `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
+	Username     string      `gorm:"unique;not null"`
+	PasswordHash string      `gorm:"not null"`
+	IsSuperUser  bool        `gorm:"default:false"`
+	Chats        []Chat      `gorm:"foreignKey:AdminID" swaggerignore:"true"`
+	ChatMembers  []ChatAdmin `gorm:"foreignKey:AdminID" swaggerignore:"true"`
 }
 
 // Чаты
@@ -24,6 +26,7 @@ type Chat struct {
 	Name        string `gorm:"not null"`
 	Descr       string
 	CreatedDate time.Time     `gorm:"default:now()"`
+	Admins      []ChatAdmin   `gorm:"foreignKey:ChatID" swaggerignore:"true"`
 	Documents   []Document    `gorm:"foreignKey:ChatID" swaggerignore:"true"`
 	Settings    []ChatSetting `gorm:"foreignKey:ChatID" swaggerignore:"true"`
 	Roles       []Role        `gorm:"foreignKey:ChatID" swaggerignore:"true"`
@@ -31,43 +34,60 @@ type Chat struct {
 	History     []ChatHistory `gorm:"foreignKey:ChatID" swaggerignore:"true"`
 }
 
+// Связь чат-админ (доступ админа к управлению чатом)
+type ChatAdmin struct {
+	ID          uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
+	ChatID      uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:idx_chat_admin_unique"`
+	Chat        Chat      `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:ChatID" swaggerignore:"true"`
+	AdminID     uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:idx_chat_admin_unique"`
+	Admin       Admin     `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:AdminID" swaggerignore:"true"`
+	CreatedDate time.Time `gorm:"default:now()"`
+}
+
 // Документы
 type Document struct {
-	ID          uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	ChatID      uuid.UUID `gorm:"type:uuid;not null" json:"chat_id"`
-	Name        string    `gorm:"not null" json:"name"`
-	Path        string    `json:"path"`
-	FullPath    string    `json:"full_path"`
-	Protected   bool      `gorm:"default:false" json:"protected"`
-	AccessLevel int       `gorm:"default:0" json:"access_level"`
-	CreatedDate time.Time `gorm:"default:now()" json:"created_date"`
-	Chat        Chat      `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:ChatID" json:"-"`
-	Chunks      []Chunk   `gorm:"foreignKey:DocID;constraint:OnDelete:CASCADE;" swaggerignore:"true" json:"-"`
+	ID          uuid.UUID      `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	ChatID      uuid.UUID      `gorm:"type:uuid;not null" json:"chat_id"`
+	Name        string         `gorm:"not null" json:"name"`
+	Tags        pq.StringArray `gorm:"type:text[];not null;default:'{}'" json:"tags" swaggertype:"array,string"`
+	Path        string         `json:"path"`
+	FullPath    string         `json:"full_path"`
+	Protected   bool           `gorm:"default:false" json:"protected"`
+	AccessLevel int            `gorm:"default:0" json:"access_level"`
+	CreatedDate time.Time      `gorm:"default:now()" json:"created_date"`
+	Chat        Chat           `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:ChatID" json:"-"`
+	Chunks      []Chunk        `gorm:"foreignKey:DocID;constraint:OnDelete:CASCADE;" swaggerignore:"true" json:"-"`
 }
 
 // Чанки
 type Chunk struct {
-	ID        uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
-	DocID     uuid.UUID `gorm:"type:uuid;not null"`
-	DocName   string
-	Text      string
-	Embedding pgvector.Vector `gorm:"type:vector(768)" swaggerignore:"true" json:"-"`
-	Filepath  string
-	ChunkName string
-	Document  Document `gorm:"foreignKey:DocID;references:ID" swaggerignore:"true" json:"-"`
+	ID              uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
+	DocID           uuid.UUID `gorm:"type:uuid;not null"`
+	ChatID          uuid.UUID `gorm:"type:uuid;" swaggerignore:"true" json:"-"`
+	DocName         string
+	Text            string
+	Embedding       pgvector.Vector `gorm:"type:vector(768)" swaggerignore:"true" json:"-"`
+	Filepath        string
+	ChunkName       string
+	Score           float32  `gorm:"-" json:"score,omitempty"`
+	KeywordScore    float32  `gorm:"-" json:"keyword_score,omitempty"`
+	HybridScore     float32  `gorm:"-" json:"hybrid_score,omitempty"`
+	RetrievalSource string   `gorm:"-" json:"retrieval_source,omitempty"`
+	Document        Document `gorm:"foreignKey:DocID;references:ID" swaggerignore:"true" json:"-"`
+	Chat            Chat     `gorm:"foreignKey:ChatID;references:ID" swaggerignore:"true" json:"-"`
 }
 
 // Настройки чата
 type ChatSetting struct {
-	ID          uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
-	ChatID      uuid.UUID `gorm:"type:uuid;not null"`
-	Chat        Chat
-	HelloText   string
-	Name        string
-	Descr       string
-	URL         string
-	CreatedDate time.Time              `gorm:"default:now()"`
-	Settings    map[string]interface{} `gorm:"type:jsonb"`
+	ID          uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	ChatID      uuid.UUID `gorm:"type:uuid;not null" json:"chatID"`
+	Chat        Chat      `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:ChatID" json:"-" swaggerignore:"true"`
+	HelloText   string    `json:"helloText"`
+	Name        string    `json:"name"`
+	Descr       string    `json:"descr"`
+	URL         string    `json:"url"`
+	CreatedDate time.Time `gorm:"default:now()" json:"createdDate"`
+	Settings    JSONB     `gorm:"type:jsonb" json:"settings"`
 }
 
 // Роли
@@ -86,10 +106,12 @@ type ChatUser struct {
 	ChatID       uuid.UUID `gorm:"type:uuid;not null"`
 	Chat         Chat
 	UserRole     *uuid.UUID
-	Role         Role `gorm:"foreignKey:UserRole;references:ID"`
-	Username     string
+	Role         Role   `gorm:"foreignKey:UserRole;references:ID"`
+	Username     string `gorm:"not null"`
 	UserInfo     string
-	PasswordHash string
+	PasswordHash string        `gorm:"not null"`
+	AccessLevel  int           `gorm:"default:0" json:"access_level"`
+	RoleName     string        `json:"user_role"`
 	History      []ChatHistory `gorm:"foreignKey:UserID" swaggerignore:"true"`
 }
 
@@ -98,8 +120,8 @@ type ChatHistory struct {
 	ID       uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
 	ChatID   uuid.UUID `gorm:"type:uuid;not null"`
 	Chat     Chat
-	UserID   uuid.UUID `gorm:"type:uuid;not null"`
-	User     ChatUser
+	UserID   *uuid.UUID `gorm:"type:uuid"`
+	User     *ChatUser
 	Messages []Message `gorm:"foreignKey:ChatHistoryID" swaggerignore:"true"`
 }
 

@@ -22,6 +22,7 @@ func NewPgStore(conn string) (*gorm.DB, error) {
 	if err := db.AutoMigrate(
 		&models.Admin{},
 		&models.Chat{},
+		&models.ChatAdmin{},
 		&models.Document{},
 		&models.Chunk{},
 		&models.ChatSetting{},
@@ -29,6 +30,9 @@ func NewPgStore(conn string) (*gorm.DB, error) {
 		&models.ChatUser{},
 		&models.ChatHistory{},
 		&models.Message{},
+		&models.TestQuestion{},
+		&models.EvaluationRun{},
+		&models.EvaluationResult{},
 	); err != nil {
 		return nil, err
 	}
@@ -43,6 +47,13 @@ func NewPgStore(conn string) (*gorm.DB, error) {
 // ensureSchema для pgvector и индексов
 func ensureSchema(db *gorm.DB) error {
 	stmts := []string{
+		`ALTER TABLE documents ADD COLUMN IF NOT EXISTS tags text[] NOT NULL DEFAULT '{}'::text[];`,
+		`CREATE INDEX IF NOT EXISTS documents_tags_gin_idx ON documents USING GIN (tags);`,
+		`INSERT INTO chat_admins (chat_id, admin_id)
+		 SELECT id, admin_id
+		 FROM chats
+		 WHERE admin_id IS NOT NULL
+		 ON CONFLICT (chat_id, admin_id) DO NOTHING;`,
 
 		`DO $$
 		BEGIN
@@ -79,7 +90,5 @@ func ensureExtension(db *gorm.DB) error {
 		}
 	}
 
-	// ANALYZE
-	_ = db.Exec(`ANALYZE chunks`).Error
 	return nil
 }

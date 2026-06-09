@@ -1,10 +1,6 @@
 package service
 
 import (
-	"errors"
-	"time"
-
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/katakuxiko/Diplom/internal/dto"
 	"github.com/katakuxiko/Diplom/internal/models"
@@ -56,58 +52,45 @@ func (s *AdminService) Delete(id uuid.UUID) error {
 	return s.repo.Delete(id)
 }
 
-// --- Авторизация ---
-var jwtSecret = []byte("your_secret_key") // Замените на свой секрет
-
-type Claims struct {
-	AdminID string `json:"admin_id"`
-	jwt.RegisteredClaims
+func (s *AdminService) GetByUsername(username string) (*models.Admin, error) {
+	return s.repo.GetByUsername(username)
 }
 
-func (s *AdminService) Authenticate(req *dto.AdminAuthRequest) (*dto.AuthTokensResponse, error) {
-	admin, err := s.repo.GetByUsername(req.Username)
-	if err != nil || admin == nil {
-		return nil, errors.New("invalid credentials")
-	}
-	if !utils.CheckPassword(req.Password, admin.PasswordHash) {
-		return nil, errors.New("invalid credentials")
-	}
+func (s *AdminService) CheckPassword(password, hash string) bool {
+	return utils.CheckPassword(password, hash)
+}
 
-	accessToken, err := GenerateJWT(admin.ID.String(), 15*time.Minute)
-	if err != nil {
-		return nil, err
-	}
-	refreshToken, err := GenerateJWT(admin.ID.String(), 7*24*time.Hour)
+// GetStats собирает агрегированные метрики для админской панели
+func (s *AdminService) GetStats() (*dto.AdminStatsResponse, error) {
+	counts, err := s.repo.GetCounts()
 	if err != nil {
 		return nil, err
 	}
 
-	return &dto.AuthTokensResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
+	// Собираем статистику по каждому чату
+	perChat, err := s.repo.GetCountsPerChat()
+	if err != nil {
+		return nil, err
+	}
+
+	var chatsDto []dto.ChatStatsResponse
+	for _, c := range perChat {
+		chatsDto = append(chatsDto, dto.ChatStatsResponse{
+			ChatID:         c.ChatID,
+			Name:           c.Name,
+			UsersCount:     c.UsersCount,
+			DocumentsCount: c.DocumentsCount,
+			MessagesCount:  c.MessagesCount,
+			ChunksCount:    c.ChunksCount,
+		})
+	}
+
+	return &dto.AdminStatsResponse{
+		UsersCount:     counts.UsersCount,
+		ChatsCount:     counts.ChatsCount,
+		DocumentsCount: counts.DocumentsCount,
+		MessagesCount:  counts.MessagesCount,
+		ChunksCount:    counts.ChunksCount,
+		Chats:          chatsDto,
 	}, nil
-}
-
-func GenerateJWT(adminID string, duration time.Duration) (string, error) {
-	claims := &Claims{
-		AdminID: adminID,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(duration)),
-		},
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(jwtSecret)
-}
-
-func ParseJWT(tokenStr string) (*Claims, error) {
-	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-		return jwtSecret, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
-		return claims, nil
-	}
-	return nil, errors.New("invalid token")
 }

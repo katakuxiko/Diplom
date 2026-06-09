@@ -1,0 +1,19 @@
+# Запуск всех сервисов
+docker-compose up -d
+
+# Остановка всех сервисов  
+docker-compose down
+
+# Перезапуск с пересборкой
+docker-compose up --build
+
+# Просмотр логов
+docker-compose logs -f
+
+# Полная очистка (включая volumes)
+docker-compose down -v
+
+#Для сваггера
+go install github.com/swaggo/swag/cmd/swag@latest
+swag init
+

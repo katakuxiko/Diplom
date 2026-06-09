@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -13,6 +15,7 @@ import (
 	"github.com/katakuxiko/Diplom/internal/models"
 	"github.com/katakuxiko/Diplom/internal/pdf"
 	"github.com/katakuxiko/Diplom/internal/service"
+	"github.com/katakuxiko/Diplom/internal/utils"
 )
 
 type DocumentHandler struct {
@@ -20,6 +23,7 @@ type DocumentHandler struct {
 	chunkService    *service.ChunkService
 	llm             *service.LLMClient
 	cfg             *config.Config
+	chatSettings    *service.ChatSettingsService
 }
 
 // NewDocumentHandler конструктор с DI
@@ -28,12 +32,14 @@ func NewDocumentHandler(
 	chunkService *service.ChunkService,
 	llm *service.LLMClient,
 	cfg *config.Config,
+	chatSettings *service.ChatSettingsService,
 ) *DocumentHandler {
 	return &DocumentHandler{
 		documentService: documentService,
 		chunkService:    chunkService,
 		llm:             llm,
 		cfg:             cfg,
+		chatSettings:    chatSettings,
 	}
 }
 
@@ -48,15 +54,20 @@ func NewDocumentHandler(
 // @Produce      json
 // @Param        chat_id formData string true "Chat ID (uuid)"
 // @Param        file formData file true "document file"
+// @Param        tags formData string false "Document tags, JSON array or comma-separated list"
 // @Success      200 {object} dto.DocumentIngestResponse
 // @Failure      400 {object} map[string]string
 // @Failure      500 {object} map[string]string
 // @Router       /documents/upload [post]
+// @Security     BearerAuth
 func (h *DocumentHandler) UploadAndIngestPDF(c *fiber.Ctx) error {
 	// --- 1. Получаем файл
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "file is required"})
+	}
+	if err := utils.ValidatePDFUpload(fileHeader); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	chatIDStr := c.FormValue("chat_id")
@@ -64,6 +75,7 @@ func (h *DocumentHandler) UploadAndIngestPDF(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid chat_id"})
 	}
+	tags := parseDocumentTags(c.FormValue("tags"))
 
 	file, err := fileHeader.Open()
 	if err != nil {
@@ -72,7 +84,7 @@ func (h *DocumentHandler) UploadAndIngestPDF(c *fiber.Ctx) error {
 	defer file.Close()
 
 	// --- 2. Сохраняем документ через сервис
-	doc, err := h.documentService.CreateDocument(chatID, file, fileHeader, h.cfg)
+	doc, err := h.documentService.CreateDocument(chatID, file, fileHeader, h.cfg, tags)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -98,7 +110,7 @@ func (h *DocumentHandler) UploadAndIngestPDF(c *fiber.Ctx) error {
 	// --- 5. Дробим на chunks
 	const chunkSize = 220
 	const chunkOverlap = 40
-	parts := pdf.ChunkByWords(txt, chunkSize, chunkOverlap)
+	parts := pdf.ChunkBySentences(txt, chunkSize, chunkOverlap)
 	if len(parts) == 0 {
 		return c.Status(400).JSON(fiber.Map{"error": "no chunks created"})
 	}
@@ -113,9 +125,38 @@ func (h *DocumentHandler) UploadAndIngestPDF(c *fiber.Ctx) error {
 			DocName:   doc.Name,
 			ChunkName: chunkName,
 			DocID:     doc.ID,
+			ChatID:    chatID,
 		}
 
-		emb, err := h.llm.Embedding(p)
+		// Попробуем получить настройки чата и использовать их для эмбеддингов
+		var emb []float32
+		if h.chatSettings != nil {
+			if cs, err := h.chatSettings.GetByChatID(context.Background(), chatID); err == nil && cs != nil && cs.Settings != nil {
+				// marshal JSONB -> bytes -> AskSettings
+				raw, _ := json.Marshal(cs.Settings)
+				var dbSettings models.AskSettings
+				if err := json.Unmarshal(raw, &dbSettings); err == nil {
+					// Попробуем дешифровать ключи, если они были сохранены зашифрованными
+					if dbSettings.ExternalAPIKey != "" {
+						if dec, derr := utils.DecryptString(dbSettings.ExternalAPIKey); derr == nil {
+							dbSettings.ExternalAPIKey = dec
+						}
+					}
+					if dbSettings.EmbedExternalAPIKey != "" {
+						if dec2, derr2 := utils.DecryptString(dbSettings.EmbedExternalAPIKey); derr2 == nil {
+							dbSettings.EmbedExternalAPIKey = dec2
+						}
+					}
+					emb, err = h.llm.EmbeddingWithSettings(p, &dbSettings)
+				} else {
+					emb, err = h.llm.Embedding(p)
+				}
+			} else {
+				emb, err = h.llm.Embedding(p)
+			}
+		} else {
+			emb, err = h.llm.Embedding(p)
+		}
 		if err != nil {
 			log.Printf("embedding error (%s): %v", chunkName, err)
 			continue
